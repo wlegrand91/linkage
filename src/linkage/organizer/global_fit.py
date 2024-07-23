@@ -32,6 +32,7 @@ class GlobalFit:
 
         # list of all parameter names in the same order as guesses
         self._all_parameter_names = []
+        self._parameter_guesses = []
         
         # Initialize class
         self._load_model()
@@ -41,7 +42,6 @@ class GlobalFit:
         self._process_expt_fudge()
         self._build_point_map()
 
-    
     def _load_model(self):
         """
         Load and initialize the thermodynamic linkage model. 
@@ -73,6 +73,7 @@ class GlobalFit:
         # Record names of the model parameters
         for p in self._bm.param_names:
             self._all_parameter_names.append(p)
+            self._parameter_guesses.append(0.0)
 
         # Last binding model parameter index is last value
         self._bm_param_end_idx = len(self._all_parameter_names) - 1
@@ -124,6 +125,7 @@ class GlobalFit:
             # Names for all enthalpies
             for s in self._bm.micro_species:
                 self._all_parameter_names.append(f"dH_{s}")
+                self._parameter_guesses.append(0.0)
 
             # Last enthalpy index is last entry
             self._dh_param_end_idx = len(self._all_parameter_names) - 1
@@ -139,6 +141,7 @@ class GlobalFit:
 
                 param_name = f"expt_{expt_counter}_{expt.conc_to_float}_fudge"
                 self._all_parameter_names.append(param_name)
+                self._parameter_guesses.append(1.0)
                 
                 fudge_species_index = np.where(self._bm.macro_species == expt.conc_to_float)[0][0]
                 fudge_value_index = len(self._all_parameter_names) - 1
@@ -183,12 +186,14 @@ class GlobalFit:
                            
                     if obs_info["obs_type"] == "spec":
 
+                        den_index = np.where(self._bm.macro_species == obs_info["denominator"])[0][0]
+
                         pt = SpecPoint(idx=i,
                                        expt_idx=expt_counter,
                                        obs_key=obs,
                                        obs_mask=np.isin(self._bm.micro_species,
                                                         obs_info["observable_species"]),
-                                       denom=obs_info["denominator"],
+                                       denom=den_index,
                                        micro_array=self._micro_arrays[-1],
                                        macro_array=self._macro_arrays[-1])
                         
@@ -198,7 +203,7 @@ class GlobalFit:
                                       expt_idx=expt_counter,
                                       obs_key=obs,
                                       dh_param_start_idx=self._dh_param_start_idx,
-                                      dh_param_end_idx=self._dh_param_end_idx,
+                                      dh_param_end_idx=self._dh_param_end_idx + 1,
                                       micro_array=self._micro_arrays[-1])
         
                     else:
@@ -213,6 +218,7 @@ class GlobalFit:
         self._y_calc = np.ones(len(self._y_obs),dtype=float)*np.nan
         self._y_obs = np.array(self._y_obs)
         self._y_stdev = np.array(self._y_stdev)/np.sum(self._y_stdev)
+
     
     def total_model(self,guesses):
     
@@ -234,8 +240,8 @@ class GlobalFit:
                 this_macro_array = self._macro_arrays[i][j,:]
                 this_macro_array[fudge_species_index] *= fudge_value
 
-                # Grab parameters from guesses
-                this_param_array = guesses[self._bm_param_start_idx:self._bm_param_end_idx+1]
+                # Grab parameters from guesses. 
+                this_param_array = np.float_power(10,guesses[self._bm_param_start_idx:self._bm_param_end_idx+1])
 
                 # Update microscopic species concentrations
                 self._micro_arrays[i][j,:] = self._bm.get_concs(param_array=this_param_array,
@@ -263,5 +269,8 @@ class GlobalFit:
     def parameter_names(self):
         return self._all_parameter_names
             
+    @property
+    def parameter_guesses(self):
+        return self._parameter_guesses
     
         

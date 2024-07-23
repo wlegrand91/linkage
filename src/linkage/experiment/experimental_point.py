@@ -69,8 +69,8 @@ class SpecPoint(ExperimentalPoint):
         obs_mask : np.ndarray (bool or int)
             mask that grabs microscopic species from micro_array that correspond
             to the numerator when calculating the observable
-        denom : str
-            name of the macro species that should be used as the denominator
+        denom : int
+            index of the macro species that should be used as the denominator
             for the observable calculation
         micro_array : np.ndarray (float)
             array holding concentrations of all microscopic species, calculated
@@ -90,7 +90,6 @@ class SpecPoint(ExperimentalPoint):
         self._micro_array = micro_array
         self._macro_array = macro_array
         
-    @property
     def calc_value(self,*args,**kwargs):
         """
         Calculate the observable given the estimated concentrations of all 
@@ -145,7 +144,6 @@ class ITCPoint(ExperimentalPoint):
         
         self._micro_array = micro_array
         
-    @property
     def calc_value(self,parameters,*args,**kwargs):
         """
         Calculate the heat for this shot given the current estimated

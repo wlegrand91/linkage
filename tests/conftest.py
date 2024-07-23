@@ -1,4 +1,10 @@
 import pytest
+
+import linkage
+
+import pandas as pd
+import numpy as np
+
 import os
 import glob
 
@@ -87,3 +93,37 @@ def get_files(base_dir):
 @pytest.fixture(scope="module")
 def example_xyz():
     return get_files(os.path.join("data","example-xyz"))
+
+@pytest.fixture(scope="module")
+def fake_spec_and_itc_data():
+
+    # Fake data
+    expt_data = pd.DataFrame({"injection":25*np.ones(50),
+                            "cd222":np.random.normal(0,1,50),
+                            "cd240":np.random.normal(0,1,50)})
+    expt_data.loc[expt_data.index[0],"injection"] = 0.0
+
+    itc_data = pd.DataFrame({"injection":25*np.ones(50),
+                            "heat":np.random.normal(0,1,50)})
+
+
+    # Load spec data
+    e = linkage.experiment.Experiment(expt_data,
+                                    cell_contents={"AT":50e-6,
+                                                    "CT":0.5e-3},
+                                    syringe_contents={"ET":1e-3},
+                                    conc_to_float="AT")
+
+    e.add_observable("cd222","spec",observable_species="I",denominator="AT")
+    e.add_observable("cd240","spec",observable_species=["I","A"],denominator="AT")
+
+    # Load ITC data
+    f = linkage.experiment.Experiment(itc_data,
+                cell_contents={"CT":0.5e-3},
+                syringe_contents={"ET":1e-3},
+                conc_to_float=None)
+    f.add_observable("heat","itc")
+
+    expt_list = [e,f]
+
+    return expt_list
