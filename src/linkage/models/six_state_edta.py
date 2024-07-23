@@ -61,16 +61,16 @@ class SixStateEDTA(BindingModel):
         # Return free calcium
         return np.real(solution[0])
         
-    def get_concs(self,K_array,C_array):
+    def get_concs(self,param_array,macro_array):
         """
-        Get the concentrations of all species in solution given the equilibrium
-        constants and total concentrations.
+        Get the concentrations of all species in solution given the model 
+        parameters and concentrations of macro species. 
         
         Parameters
         ----------
-        K_array : numpy.ndarray
+        param_array : numpy.ndarray
             array of five equilibrium constants (KI, KE, K1, K2, K3, K4)
-        C_array : nump.ndarray
+        macro_array : nump.ndarray
             array of total concentrations (A_total, C_total, E_total)
         
         Returns
@@ -80,8 +80,8 @@ class SixStateEDTA(BindingModel):
             AC3, AC4, EC).
         """
 
-        KI, KE, K1, K2, K3, K4 = K_array
-        AT, CT, ET = C_array
+        KI, KE, K1, K2, K3, K4 = param_array
+        AT, CT, ET = macro_array
         
         # Get the free calcium concentration
         C = self._get_free_c(KI,KE,K1,K2,K3,K4,AT,CT,ET)
@@ -112,7 +112,7 @@ class SixStateEDTA(BindingModel):
         return np.array([I, A, C, E, AC1, AC2, AC3, AC4, EC])
     
     @property
-    def K_names(self):
+    def param_names(self):
         return np.array(["KI","KE","K1","K2","K3","K4"])
 
     @property
@@ -120,6 +120,6 @@ class SixStateEDTA(BindingModel):
         return np.array(["AT","CT","ET"])
     
     @property
-    def species(self):
+    def micro_species(self):
         return np.array(["I", "A", "C", "E", "AC1", "AC2", "AC3", "AC4", "EC"])
 

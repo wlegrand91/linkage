@@ -21,11 +21,15 @@ class Experiment:
             err = "expt_data should be a dataframe or spreadsheet with a 'injection' column\n"
             raise ValueError(err)
 
+        if "ignore_point" not in self._expt_data.columns:
+            self._expt_data["ignore_point"] = np.zeros(len(self._expt_data),dtype=bool)
+
         # If there is no "0" injections start -- like in ITC, for example -- add this with 
         # np.nan for all non-injection values
         if not np.isclose(self._expt_data.loc[self._expt_data.index[0],"injection"],0):
             new_row = dict([(c,[np.nan]) for c in self._expt_data.columns])
             new_row["injection"] = [0.0]
+            new_row["ignore_point"] = [True]
             new_row = pd.DataFrame(new_row)
             self._expt_data = pd.concat((new_row,self._expt_data),ignore_index=True)
             
@@ -43,53 +47,16 @@ class Experiment:
                                     cell_volume=cell_volume,
                                     injection_array=np.array(self._expt_data["injection"]),
                                     constant_volume=constant_volume)
-        
-        self._macrospecies = np.array(self._expt_concs.columns[2:])
-        self._conc_array = np.array(self._expt_concs.loc[:,self._macrospecies])
 
+        # Make sure conc_to_float is sane
         if conc_to_float is not None:
-            self._floating_conc = True
-            
-            self._mask = self._macrospecies == conc_to_float
-            if np.sum(self._mask) != 1:
-                err = "conc_to_float should be one of the macrospecies in the dataset\n"
+            if conc_to_float not in self._expt_concs.columns:
+                err = "conc_to_float is not a macrospecies in the experiment\n"
                 raise ValueError(err)
 
-        else:
-            self._mask = np.ones(len(self._macrospecies),dtype=bool)
-            self._floating_conc = False
-
-
-        self._observable_columns = {}
-        
-    @property
-    def expt_data(self):
-        return self._expt_data
+        self._conc_to_float = conc_to_float
+        self._observables = {}
     
-    @property
-    def expt_concs(self):
-        return self._expt_concs
-    
-    @property
-    def macrospecies(self):
-        return self._macrospecies
-
-    @property
-    def conc_array(self):
-
-        return self._conc_array
-        
-    def get_scaled_conc_array(self,conc_float_scalar=1.0):
-        """
-        Get the concentration array with the species indicated in conc_to_float 
-        scaled by conc_float_scalar.
-        """
-
-        conc_array = self._conc_array.copy()
-        conc_array[:,self._mask] = conc_array[:,self._mask]*conc_float_scalar
-
-        return conc_array
-
     def add_observable(self,
                        column_name,
                        obs_type,
@@ -125,18 +92,36 @@ class Experiment:
                 err = "denominator must be specified for a 'spec' experiment.\n"
                 raise ValueError(err)
 
-            if denominator not in self.macrospecies:
-                err = f"denominator must be one of: {','.join(self.macrospecies)}\n"
+            macrospecies = self._expt_concs.columns
+            macrospecies = [m for m in macrospecies if m != "injection"]
+            if denominator not in macrospecies:
+                err = f"denominator must be one of: {','.join(macrospecies)}\n"
                 raise ValueError(err)
 
-        self._observable_columns[column_name] = {"obs_type":obs_type,
-                                                 "observable_species":observable_species,
-                                                 "denominator":denominator}
+        self._observables[column_name] = {"obs_type":obs_type,
+                                          "observable_species":observable_species,
+                                          "denominator":denominator}
  
-    @property
-    def observable_columns(self):
-        return self._observable_columns
+    def add_expt_conc_column(self,new_column,conc_vector=None):
+
+        if conc_vector is None:
+            conc_vector = np.zeros(len(self._expt_concs))
+
+        if new_column not in self._expt_concs.columns:
+            self._expt_concs[new_column] = conc_vector
 
     @property
-    def floating_conc(self):
-        return self._floating_conc
+    def expt_data(self):
+        return self._expt_data
+    
+    @property
+    def expt_concs(self):
+        return self._expt_concs
+
+    @property
+    def observables(self):
+        return self._observables
+
+    @property
+    def conc_to_float(self):
+        return self._conc_to_float

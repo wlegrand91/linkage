@@ -34,3 +34,5 @@ sleep 1
 
 wget https://github.com/harmslab/linkage/actions/workflows/python-app.yml/badge.svg -O ghwf.svg
 wget https://readthedocs.org/projects/linkage/badge/?version=latest -O rtd.svg
+
+mv *.svg docs/badges/

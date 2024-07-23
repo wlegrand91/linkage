@@ -1,2 +1,2 @@
 
-from .experiment import Experiment
+from linkage.experiment.experiment import Experiment
