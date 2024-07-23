@@ -43,9 +43,6 @@ classifiers = [
 Repository = "https://github.com/harmslab/linkage.git"
 "Bug Tracker" = "https://github.com/harmslab/linkage/issues"
 
-[project.scripts]
-linkage = "linkage.cli:main_cli"
-
 [project.optional-dependencies]
 test = [
   "coverage",
