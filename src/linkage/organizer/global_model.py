@@ -3,10 +3,11 @@ from linkage.experiment.experimental_point import SpecPoint
 from linkage.experiment.experimental_point import ITCPoint
 
 import numpy as np
+import pandas as pd
 
 import copy
 
-class GlobalFit:
+class GlobalModel:
 
     def __init__(self,expt_list,model_name="SixStateEDTA"):
         """
@@ -17,7 +18,7 @@ class GlobalFit:
         expt_list : list
             list of experiments with loaded observations
         model_name : str
-            name of model to use for the analysis
+            name of model to use to calculate concentrations
         """
 
         # Store model name and experiment list
@@ -164,9 +165,9 @@ class GlobalFit:
         for expt_counter, expt in enumerate(self._expt_list):
 
             # Each experiment will have a an array of microscopic species concentrations
-            self._micro_arrays.append(np.zeros((len(expt.expt_data),
+            self._micro_arrays.append(np.ones((len(expt.expt_data),
                                                 len(self._bm.micro_species)),
-                                               dtype=float))
+                                               dtype=float)*np.nan)
 
             # ... and an array of macroscopic species concentrations
             macro_array = np.array(expt.expt_concs.loc[:,self._bm.macro_species],
@@ -191,20 +192,21 @@ class GlobalFit:
                         pt = SpecPoint(idx=i,
                                        expt_idx=expt_counter,
                                        obs_key=obs,
+                                       micro_array=self._micro_arrays[-1],
+                                       macro_array=self._macro_arrays[-1],
                                        obs_mask=np.isin(self._bm.micro_species,
                                                         obs_info["observable_species"]),
-                                       denom=den_index,
-                                       micro_array=self._micro_arrays[-1],
-                                       macro_array=self._macro_arrays[-1])
+                                       denom=den_index)
                         
                     elif obs_info["obs_type"] == "itc":
                         
                         pt = ITCPoint(idx=i,
                                       expt_idx=expt_counter,
                                       obs_key=obs,
+                                      micro_array=self._micro_arrays[-1],
+                                      macro_array=self._macro_arrays[-1],
                                       dh_param_start_idx=self._dh_param_start_idx,
-                                      dh_param_end_idx=self._dh_param_end_idx + 1,
-                                      micro_array=self._micro_arrays[-1])
+                                      dh_param_end_idx=self._dh_param_end_idx + 1)
         
                     else:
                         obs_type = obs_info["obs_type"]
@@ -220,8 +222,9 @@ class GlobalFit:
         self._y_stdev = np.array(self._y_stdev)/np.sum(self._y_stdev)
 
     
-    def total_model(self,guesses):
+    def model(self,guesses):
     
+        # For each block of macro species
         for i in range(len(self._macro_arrays)):
         
             # Figure out if we are fudging a macro array species concentration
@@ -240,14 +243,15 @@ class GlobalFit:
                 this_macro_array = self._macro_arrays[i][j,:]
                 this_macro_array[fudge_species_index] *= fudge_value
 
-                # Grab parameters from guesses. 
+                # Grab binding parameters from guesses. 
                 this_param_array = np.float_power(10,guesses[self._bm_param_start_idx:self._bm_param_end_idx+1])
 
                 # Update microscopic species concentrations
                 self._micro_arrays[i][j,:] = self._bm.get_concs(param_array=this_param_array,
                                                                 macro_array=this_macro_array)
 
-        # For each point, calculate the observable
+        # For each point, calculate the observable given the estimated microscopic
+        # and macroscopic concentrations
         for i in range(len(self._points)):
             self._y_calc[i] = self._points[i].calc_value(guesses)
         
@@ -273,4 +277,61 @@ class GlobalFit:
     def parameter_guesses(self):
         return self._parameter_guesses
     
+    @property
+    def model_name(self):
+        return self._model_name
+    
+    @property
+    def macro_species(self):
+        return self._bm.macro_species
+    
+    @property
+    def micro_species(self):
+        return self._micro_species
+    
+    @property
+    def as_df(self):
+
+        out = {"expt_id":[],
+               "expt_type":[],
+               "expt_obs":[]}
+
+        for k in self._bm.macro_species:
+            out[k] = []
+
+        for k in self._bm.micro_species:
+            out[k] = []
+
+        for p in self._points:
+            
+            out["expt_id"].append(p.expt_idx)
+
+            if issubclass(type(p),SpecPoint):
+                out["expt_type"].append(p.obs_key)
+
+                num = "+".join(self._bm.micro_species[p._obs_mask])
+                den = self._bm.macro_species[p._denom]
+                out["expt_obs"].append(f"{num}/{den}")
+            
+            elif issubclass(type(p),ITCPoint):
+                out["expt_type"].append("itc")
+
+                out["expt_obs"].append("heat")
+
+            else:
+                err = "point class not recognized\n"
+                raise ValueError(err)
+
+            for i, k in enumerate(self._bm.macro_species):
+                out[k].append(p._macro_array[p._idx,i])
+
+            for i, k in enumerate(self._bm.micro_species):
+                out[k].append(p._micro_array[p._idx,i])
+            
+        out["y_obs"] = self.y_obs
+        out["y_calc"] = self.y_calc
+        out["y_stdev"] = self.y_stdev
+
+        return pd.DataFrame(out)
+
         

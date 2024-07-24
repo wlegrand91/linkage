@@ -9,7 +9,9 @@ class ExperimentalPoint:
     def __init__(self,
                  idx,
                  expt_idx,
-                 obs_key):
+                 obs_key,
+                 micro_array,
+                 macro_array):
         """
         Should be sub-classed.
         """
@@ -17,6 +19,8 @@ class ExperimentalPoint:
         self._idx = idx
         self._expt_idx = expt_idx
         self._obs_key = obs_key
+        self._micro_array = micro_array
+        self._macro_array = macro_array
 
     @property
     def idx(self):
@@ -51,10 +55,10 @@ class SpecPoint(ExperimentalPoint):
                  idx,
                  expt_idx,
                  obs_key,
-                 obs_mask,
-                 denom,
                  micro_array,
-                 macro_array):
+                 macro_array,
+                 obs_mask,
+                 denom,):
         """
         Initialize a spectroscopic data point. 
         
@@ -66,29 +70,28 @@ class SpecPoint(ExperimentalPoint):
             index of the experiment itself (allowing multiple experiments)
         obs_key : str
             key pointing to observable from the experiment
-        obs_mask : np.ndarray (bool or int)
-            mask that grabs microscopic species from micro_array that correspond
-            to the numerator when calculating the observable
-        denom : int
-            index of the macro species that should be used as the denominator
-            for the observable calculation
         micro_array : np.ndarray (float)
             array holding concentrations of all microscopic species, calculated
             elsewhere
         macro_array : np.ndarray (float)
             array holding concentrations of all macroscopic species, calculated
             elsewhere
+        obs_mask : np.ndarray (bool or int)
+            mask that grabs microscopic species from micro_array that correspond
+            to the numerator when calculating the observable
+        denom : int
+            index of the macro species that should be used as the denominator
+            for the observable calculation
         """
 
         super().__init__(idx=idx,
                          expt_idx=expt_idx,
-                         obs_key=obs_key)
+                         obs_key=obs_key,
+                         micro_array=micro_array,
+                         macro_array=macro_array)
         
         self._obs_mask = obs_mask
         self._denom = denom
-        
-        self._micro_array = micro_array
-        self._macro_array = macro_array
         
     def calc_value(self,*args,**kwargs):
         """
@@ -112,9 +115,10 @@ class ITCPoint(ExperimentalPoint):
                  idx,
                  expt_idx,
                  obs_key,
+                 micro_array,
+                 macro_array,
                  dh_param_start_idx,
-                 dh_param_end_idx,
-                 micro_array):
+                 dh_param_end_idx):
         """
         Initialize an ITC data point. 
         
@@ -126,23 +130,27 @@ class ITCPoint(ExperimentalPoint):
             index of the experiment itself (allowing multiple experiments)
         obs_key : str
             key pointing to observable from the experiment
+        micro_array : np.ndarray (float)
+            array holding concentrations of all microscopic species, calculated
+            elsewhere
+        macro_array : np.ndarray (float)
+            array holding concentrations of all macroscopic species, calculated
+            elsewhere
         dh_param_start_idx : int
             index of first enthalpy parameter in guesses array
         dh_param_end_idx : int
             index of last enthalpy parameter in guesses array
-        micro_array : np.ndarray (float)
-            array holding concentrations of all microscopic species, calculated
-            elsewhere
         """
-
+        
         super().__init__(idx=idx,
                          expt_idx=expt_idx,
-                         obs_key=obs_key)
+                         obs_key=obs_key,
+                         micro_array=micro_array,
+                         macro_array=macro_array)
         
         self._dh_param_start_idx = dh_param_start_idx
         self._dh_param_end_idx = dh_param_end_idx
         
-        self._micro_array = micro_array
         
     def calc_value(self,parameters,*args,**kwargs):
         """

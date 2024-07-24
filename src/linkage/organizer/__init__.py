@@ -1,1 +1,1 @@
-from linkage.organizer.global_fit import GlobalFit
+from linkage.organizer.global_model import GlobalModel
