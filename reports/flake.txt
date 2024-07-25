@@ -108,6 +108,7 @@
 ./build/lib/linkage/experiment/titrator.py:93:1: W293 blank line contains whitespace
 ./build/lib/linkage/experiment/titrator.py:102:1: W293 blank line contains whitespace
 ./build/lib/linkage/models/__init__.py:2:1: F401 'linkage.models.six_state_edta.SixStateEDTA' imported but unused
+./build/lib/linkage/models/__init__.py:3:1: F401 'linkage.models.ca_edta.CaEDTA' imported but unused
 ./build/lib/linkage/models/base.py:4:1: E302 expected 2 blank lines, found 1
 ./build/lib/linkage/models/base.py:8:1: W293 blank line contains whitespace
 ./build/lib/linkage/models/base.py:9:23: E231 missing whitespace after ','
@@ -122,6 +123,31 @@
 ./build/lib/linkage/models/base.py:18:35: E231 missing whitespace after ','
 ./build/lib/linkage/models/base.py:19:1: W293 blank line contains whitespace
 ./build/lib/linkage/models/base.py:22:80: W292 no newline at end of file
+./build/lib/linkage/models/ca_edta.py:8:1: E302 expected 2 blank lines, found 1
+./build/lib/linkage/models/ca_edta.py:10:1: W293 blank line contains whitespace
+./build/lib/linkage/models/ca_edta.py:11:5: E303 too many blank lines (2)
+./build/lib/linkage/models/ca_edta.py:11:23: E231 missing whitespace after ','
+./build/lib/linkage/models/ca_edta.py:11:35: E231 missing whitespace after ','
+./build/lib/linkage/models/ca_edta.py:17:32: E231 missing whitespace after ','
+./build/lib/linkage/models/ca_edta.py:17:35: E231 missing whitespace after ','
+./build/lib/linkage/models/ca_edta.py:17:40: E231 missing whitespace after ','
+./build/lib/linkage/models/ca_edta.py:28:44: E225 missing whitespace around operator
+./build/lib/linkage/models/ca_edta.py:29:44: E225 missing whitespace around operator
+./build/lib/linkage/models/ca_edta.py:30:44: E225 missing whitespace around operator
+./build/lib/linkage/models/ca_edta.py:32:1: W293 blank line contains whitespace
+./build/lib/linkage/models/ca_edta.py:36:36: E231 missing whitespace after ','
+./build/lib/linkage/models/ca_edta.py:37:1: W293 blank line contains whitespace
+./build/lib/linkage/models/ca_edta.py:40:1: W293 blank line contains whitespace
+./build/lib/linkage/models/ca_edta.py:41:73: W291 trailing whitespace
+./build/lib/linkage/models/ca_edta.py:42:75: W291 trailing whitespace
+./build/lib/linkage/models/ca_edta.py:44:48: E231 missing whitespace after ','
+./build/lib/linkage/models/ca_edta.py:47:40: E231 missing whitespace after ','
+./build/lib/linkage/models/ca_edta.py:54:27: E231 missing whitespace after ','
+./build/lib/linkage/models/ca_edta.py:54:29: E231 missing whitespace after ','
+./build/lib/linkage/models/ca_edta.py:54:33: E231 missing whitespace after ','
+./build/lib/linkage/models/ca_edta.py:62:30: E231 missing whitespace after ','
+./build/lib/linkage/models/ca_edta.py:63:1: W293 blank line contains whitespace
+./build/lib/linkage/models/ca_edta.py:66:42: W292 no newline at end of file
 ./build/lib/linkage/models/six_state_edta.py:10:1: E302 expected 2 blank lines, found 1
 ./build/lib/linkage/models/six_state_edta.py:17:1: W293 blank line contains whitespace
 ./build/lib/linkage/models/six_state_edta.py:18:25: E231 missing whitespace after ','
@@ -444,6 +470,7 @@
 ./src/linkage/experiment/titrator.py:93:1: W293 blank line contains whitespace
 ./src/linkage/experiment/titrator.py:102:1: W293 blank line contains whitespace
 ./src/linkage/models/__init__.py:2:1: F401 'linkage.models.six_state_edta.SixStateEDTA' imported but unused
+./src/linkage/models/__init__.py:3:1: F401 'linkage.models.ca_edta.CaEDTA' imported but unused
 ./src/linkage/models/base.py:4:1: E302 expected 2 blank lines, found 1
 ./src/linkage/models/base.py:8:1: W293 blank line contains whitespace
 ./src/linkage/models/base.py:9:23: E231 missing whitespace after ','
@@ -458,6 +485,32 @@
 ./src/linkage/models/base.py:18:35: E231 missing whitespace after ','
 ./src/linkage/models/base.py:19:1: W293 blank line contains whitespace
 ./src/linkage/models/base.py:22:80: W292 no newline at end of file
+./src/linkage/models/ca_edta.py:8:1: E302 expected 2 blank lines, found 1
+./src/linkage/models/ca_edta.py:10:1: W293 blank line contains whitespace
+./src/linkage/models/ca_edta.py:11:5: E303 too many blank lines (2)
+./src/linkage/models/ca_edta.py:11:23: E231 missing whitespace after ','
+./src/linkage/models/ca_edta.py:11:35: E231 missing whitespace after ','
+./src/linkage/models/ca_edta.py:17:32: E231 missing whitespace after ','
+./src/linkage/models/ca_edta.py:17:35: E231 missing whitespace after ','
+./src/linkage/models/ca_edta.py:17:40: E231 missing whitespace after ','
+./src/linkage/models/ca_edta.py:28:44: E225 missing whitespace around operator
+./src/linkage/models/ca_edta.py:29:44: E225 missing whitespace around operator
+./src/linkage/models/ca_edta.py:30:44: E225 missing whitespace around operator
+./src/linkage/models/ca_edta.py:32:1: W293 blank line contains whitespace
+./src/linkage/models/ca_edta.py:36:36: E231 missing whitespace after ','
+./src/linkage/models/ca_edta.py:37:1: W293 blank line contains whitespace
+./src/linkage/models/ca_edta.py:38:58: W291 trailing whitespace
+./src/linkage/models/ca_edta.py:40:1: W293 blank line contains whitespace
+./src/linkage/models/ca_edta.py:41:73: W291 trailing whitespace
+./src/linkage/models/ca_edta.py:42:75: W291 trailing whitespace
+./src/linkage/models/ca_edta.py:44:48: E231 missing whitespace after ','
+./src/linkage/models/ca_edta.py:47:40: E231 missing whitespace after ','
+./src/linkage/models/ca_edta.py:54:27: E231 missing whitespace after ','
+./src/linkage/models/ca_edta.py:54:29: E231 missing whitespace after ','
+./src/linkage/models/ca_edta.py:54:33: E231 missing whitespace after ','
+./src/linkage/models/ca_edta.py:62:30: E231 missing whitespace after ','
+./src/linkage/models/ca_edta.py:63:1: W293 blank line contains whitespace
+./src/linkage/models/ca_edta.py:66:42: W292 no newline at end of file
 ./src/linkage/models/six_state_edta.py:10:1: E302 expected 2 blank lines, found 1
 ./src/linkage/models/six_state_edta.py:17:1: W293 blank line contains whitespace
 ./src/linkage/models/six_state_edta.py:18:25: E231 missing whitespace after ','
@@ -668,6 +721,47 @@
 ./tests/linkage/experiment/test_titrator.py:16:1: W293 blank line contains whitespace
 ./tests/linkage/experiment/test_titrator.py:19:31: E231 missing whitespace after ','
 ./tests/linkage/experiment/test_titrator.py:21:1: W391 blank line at end of file
+./tests/linkage/models/test_ca_edta.py:7:1: E302 expected 2 blank lines, found 1
+./tests/linkage/models/test_ca_edta.py:9:27: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:9:39: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:9:51: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:14:49: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:15:43: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:18:5: E303 too many blank lines (2)
+./tests/linkage/models/test_ca_edta.py:20:43: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:20:58: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:21:43: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:21:57: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:21:61: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:26:47: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:30:5: E303 too many blank lines (2)
+./tests/linkage/models/test_ca_edta.py:33:47: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:38:49: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:39:29: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:39:41: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:39:47: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:42:52: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:43:29: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:43:44: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:43:46: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:46:49: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:47:29: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:47:41: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:47:43: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:53:56: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:54:36: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:54:53: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:54:66: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:58:58: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:59:36: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:59:53: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:59:66: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:63:29: E128 continuation line under-indented for visual indent
+./tests/linkage/models/test_ca_edta.py:63:57: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:64:36: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:64:53: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:64:66: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:64:82: W292 no newline at end of file
 ./tests/linkage/organizer/test_global_model.py:14:1: E302 expected 2 blank lines, found 1
 ./tests/linkage/organizer/test_global_model.py:21:1: W293 blank line contains whitespace
 ./tests/linkage/organizer/test_global_model.py:25:31: E231 missing whitespace after ','
@@ -719,17 +813,17 @@
 ./tests/linkage/organizer/test_global_model.py:177:22: E128 continuation line under-indented for visual indent
 ./tests/linkage/organizer/test_global_model.py:177:47: W292 no newline at end of file
 5     E127 continuation line over-indented for visual indent
-7     E128 continuation line under-indented for visual indent
-6     E225 missing whitespace around operator
-298   E231 missing whitespace after ','
-26    E302 expected 2 blank lines, found 1
-15    E303 too many blank lines (3)
+8     E128 continuation line under-indented for visual indent
+12    E225 missing whitespace around operator
+358   E231 missing whitespace after ','
+29    E302 expected 2 blank lines, found 1
+19    E303 too many blank lines (3)
 2     E741 ambiguous variable name 'I'
-12    F401 'linkage.experiment.Experiment' imported but unused
+14    F401 'linkage.experiment.Experiment' imported but unused
 1     F541 f-string is missing placeholders
 2     F841 local variable 'args' is assigned to but never used
-78    W291 trailing whitespace
-14    W292 no newline at end of file
-251   W293 blank line contains whitespace
+83    W291 trailing whitespace
+17    W292 no newline at end of file
+261   W293 blank line contains whitespace
 3     W391 blank line at end of file
-720
+814
