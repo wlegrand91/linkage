@@ -66,11 +66,11 @@ def test_GlobalModel__sync_model_and_expt(fake_spec_and_itc_data):
     
     # Make sure array starts without AT
     assert np.array_equal(this_expt_list[1].expt_concs.columns,
-                          ["injection","volume","CT","ET"])
+                          ["injection","volume","meas_vol_dilution","CT","ET"])
     
     # make sure we added AT
     assert np.array_equal(gf._expt_list[1].expt_concs.columns,
-                          ["injection","volume","CT","ET","AT"])
+                          ["injection","volume","meas_vol_dilution","CT","ET","AT"])
     
     num_points = len(gf._expt_list[1].expt_concs["AT"])
     assert np.array_equal(gf._expt_list[1].expt_concs["AT"],

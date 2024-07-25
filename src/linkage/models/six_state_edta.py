@@ -9,14 +9,30 @@ import warnings
 
 class SixStateEDTA(BindingModel):
     """
-    The `_get_free_c` function finds the polynomial root to get the free
-    calcium concentration. The `get_concs` function calculates all species
-    concentrations given $K_{E}$, $K_{1}$, $K_{2}$, $K_{3}$, and $K_{4}$,
-    as well as the total concentrations of S100A4 dimer, calcium, and EDTA.
+    equilibria:
+        E + C -> EC; KE
+        A -> I; KI
+        A + C -> AC1; K1
+        A + 2*C -> AC2; K2
+        A + 3*C -> AC3; K3
+        A + 4*C -> AC4; K4
+
+    species:
+        ET = E + EC
+        AT = I + A + 2*AC1 + AC2 + 2*AC3 + AC4
+        CT = C + EC + 2*AC1 + 2*AC2 + 6*AC3 + 4*AC4
     """
-    
+
+    def __init__(self):
+        super().__init__()
+
     def _get_free_c(self,KI,KE,K1,K2,K3,K4,AT,CT,ET):
         """
+        The `_get_free_c` function finds the polynomial root to get the free
+        calcium concentration. The `get_concs` function calculates all species
+        concentrations given $K_{E}$, $K_{1}$, $K_{2}$, $K_{3}$, and $K_{4}$,
+        as well as the total concentrations of S100A4 dimer, calcium, and EDTA.
+    
         Get the free calcium concentration given the equilibrium constants and 
         total concentrations in the system. Private function. Should generally be 
         called by get_concs.
@@ -111,6 +127,8 @@ class SixStateEDTA(BindingModel):
         
         return np.array([I, A, C, E, AC1, AC2, AC3, AC4, EC])
     
+
+
     @property
     def param_names(self):
         return np.array(["KI","KE","K1","K2","K3","K4"])

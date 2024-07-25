@@ -81,12 +81,11 @@ class GlobalModel:
             
     def _sync_model_and_expt(self):
         """
-        Make sure that all experiments have all concentrations required for the
-        model. 
+        Make sure that all experiments have concentrations for all macrospecies
+        used by the model. If an experiment is missing a macro species, set the
+        concentration of that macrospecies to 0.0 over the whole experiment. 
         """
         
-        # If an experiment is missing a macro species, set the concentration of
-        # that molecule to 0.0 over whole titration. 
         for expt in self._expt_list:
             not_in_expt = set(self._bm.macro_species) - set(expt.expt_concs.columns)
             for missing in not_in_expt:
@@ -199,12 +198,16 @@ class GlobalModel:
                                        denom=den_index)
                         
                     elif obs_info["obs_type"] == "itc":
+
+                        meas_vol_dilution = expt.expt_concs.loc[expt.expt_data.index[i],
+                                                                "meas_vol_dilution"]
                         
                         pt = ITCPoint(idx=i,
                                       expt_idx=expt_counter,
                                       obs_key=obs,
                                       micro_array=self._micro_arrays[-1],
                                       macro_array=self._macro_arrays[-1],
+                                      meas_vol_dilution=meas_vol_dilution,
                                       dh_param_start_idx=self._dh_param_start_idx,
                                       dh_param_end_idx=self._dh_param_end_idx + 1)
         
@@ -259,34 +262,60 @@ class GlobalModel:
 
     @property
     def y_calc(self):
+        """
+        Vector of calculated values.
+        """
         return self._y_calc
     
     @property
     def y_obs(self):
+        """
+        Vector of observed values.
+        """
         return self._y_obs
 
     @property
     def y_stdev(self):
+        """
+        Vector of standard deviations of observed values.
+        """
         return self._y_stdev
 
     @property
     def parameter_names(self):
+        """
+        Names of all fit parameters, in stable order.
+        """
         return self._all_parameter_names
             
     @property
     def parameter_guesses(self):
+        """
+        Parameter values from last run of the model.
+        """
         return self._parameter_guesses
     
     @property
     def model_name(self):
+        """
+        Name of the underlying linkage model used in the analysis.
+        """
         return self._model_name
     
     @property
     def macro_species(self):
+        """
+        Names of all macrospecies, in stable order expected by the linkage 
+        model. 
+        """
         return self._bm.macro_species
     
     @property
     def micro_species(self):
+        """
+        Names of all microspecies, in stable order expected by the linkage 
+        model. 
+        """
         return self._micro_species
     
     @property

@@ -6,8 +6,18 @@ import numpy as np
 import warnings
 
 class CaEDTA(BindingModel):
-
+    """
+    species:
+        ET = E + EC
+        CT = C + EC
     
+    equilibria:
+        E + C -> EC; KE
+    """
+    
+    def __init__(self):
+        super().__init__()
+
     def get_concs(self,param_array,macro_array):
 
         KE = param_array[0]
@@ -64,3 +74,7 @@ class CaEDTA(BindingModel):
     @property
     def micro_species(self):
         return np.array(["C", "E", "EC"])
+    
+    @property
+    def reactants(self):
+        pass

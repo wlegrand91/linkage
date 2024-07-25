@@ -117,6 +117,7 @@ class ITCPoint(ExperimentalPoint):
                  obs_key,
                  micro_array,
                  macro_array,
+                 meas_vol_dilution,
                  dh_param_start_idx,
                  dh_param_end_idx):
         """
@@ -136,6 +137,10 @@ class ITCPoint(ExperimentalPoint):
         macro_array : np.ndarray (float)
             array holding concentrations of all macroscopic species, calculated
             elsewhere
+        meas_vol_dilution : float
+            how much this shot diluted the measurement volume of the cell. This
+            is calculated using the "titrator" function and corresponds to 
+            (1 - v/V) where v is the injection volume and V is the cell volume
         dh_param_start_idx : int
             index of first enthalpy parameter in guesses array
         dh_param_end_idx : int
@@ -148,6 +153,7 @@ class ITCPoint(ExperimentalPoint):
                          micro_array=micro_array,
                          macro_array=macro_array)
         
+        self._meas_vol_dilution = meas_vol_dilution
         self._dh_param_start_idx = dh_param_start_idx
         self._dh_param_end_idx = dh_param_end_idx
         
@@ -165,6 +171,6 @@ class ITCPoint(ExperimentalPoint):
         """
 
         dh_array = parameters[self._dh_param_start_idx:self._dh_param_end_idx]
-        dC = self._micro_array[self._idx,:] - self._micro_array[self._idx-1,:]
+        dC = self._micro_array[self._idx,:] - self._micro_array[self._idx-1,:]*self._meas_vol_dilution
         
         return np.sum(dC*dh_array)

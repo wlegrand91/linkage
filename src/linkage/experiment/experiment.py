@@ -38,7 +38,7 @@ class Experiment:
             raise ValueError(err)
 
         if not issubclass(type(syringe_contents),dict):
-            err = "syringe_contents should be a dictionary with initial cell concs\n"
+            err = "syringe_contents should be a dictionary with initial syringe concs\n"
             raise ValueError(err)
 
         # Calculate the total concentrations over the experiment

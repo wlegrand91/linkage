@@ -64,6 +64,7 @@ def titrator(cell_contents,
     out = {}
     out["injection"] = []
     out["volume"] = []
+    out["meas_vol_dilution"] = []
     for s in species:
         out[s] = []
         
@@ -82,9 +83,15 @@ def titrator(cell_contents,
         else:
             new_vol = start_vol + injection_array[i]
 
+        if len(out["injection"]) == 0:
+            meas_vol_dilution = 1
+        else:
+            meas_vol_dilution = (1 - injection_array[i]/cell_volume)
+
         # Record current volume and injection
         out["injection"].append(injection_array[i])
         out["volume"].append(new_vol)
+        out["meas_vol_dilution"].append(meas_vol_dilution)
 
         # Update cell concs based on injected titrant
         for s in species:
