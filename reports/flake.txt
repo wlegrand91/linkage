@@ -1247,7 +1247,26 @@
 ./tests/linkage/models/test_ca_edta.py:64:36: E231 missing whitespace after ','
 ./tests/linkage/models/test_ca_edta.py:64:53: E231 missing whitespace after ','
 ./tests/linkage/models/test_ca_edta.py:64:66: E231 missing whitespace after ','
-./tests/linkage/models/test_ca_edta.py:64:82: W292 no newline at end of file
+./tests/linkage/models/test_ca_edta.py:66:1: E302 expected 2 blank lines, found 1
+./tests/linkage/models/test_ca_edta.py:71:43: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:71:49: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:71:52: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:71:58: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:72:43: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:72:49: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:72:52: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:72:58: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:73:1: W293 blank line contains whitespace
+./tests/linkage/models/test_ca_edta.py:75:49: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:75:54: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:76:49: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:79:41: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:80:43: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:80:49: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:81:43: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:81:48: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:81:52: E231 missing whitespace after ','
+./tests/linkage/models/test_ca_edta.py:81:59: W292 no newline at end of file
 ./tests/linkage/organizer/test_global_model.py:14:1: E302 expected 2 blank lines, found 1
 ./tests/linkage/organizer/test_global_model.py:21:1: W293 blank line contains whitespace
 ./tests/linkage/organizer/test_global_model.py:25:31: E231 missing whitespace after ','
@@ -1307,9 +1326,9 @@
 6     E127 continuation line over-indented for visual indent
 11    E128 continuation line under-indented for visual indent
 12    E225 missing whitespace around operator
-646   E231 missing whitespace after ','
+663   E231 missing whitespace after ','
 1     E266 too many leading '#' for block comment
-38    E302 expected 2 blank lines, found 1
+39    E302 expected 2 blank lines, found 1
 22    E303 too many blank lines (3)
 2     E722 do not use bare 'except'
 2     E741 ambiguous variable name 'I'
@@ -1318,6 +1337,6 @@
 2     F841 local variable 'args' is assigned to but never used
 156   W291 trailing whitespace
 18    W292 no newline at end of file
-344   W293 blank line contains whitespace
+345   W293 blank line contains whitespace
 3     W391 blank line at end of file
-1302
+1321

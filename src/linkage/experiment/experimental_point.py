@@ -58,7 +58,7 @@ class SpecPoint(ExperimentalPoint):
                  micro_array,
                  macro_array,
                  obs_mask,
-                 denom,):
+                 denom):
         """
         Initialize a spectroscopic data point. 
         

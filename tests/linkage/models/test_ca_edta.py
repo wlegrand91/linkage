@@ -62,3 +62,20 @@ def test_CaEDTA_integrated():
         concs = bm.get_concs(param_array=np.array([np.nan]),
                             macro_array=np.array([np.nan,np.nan]))
         assert np.array_equal(concs,np.nan*np.ones(3,dtype=float),equal_nan=True)
+
+def test_CaEDTA_properties():
+
+    # these properties are loaded from the docstring
+    bm = CaEDTA()
+    assert len(bm.species) == 2
+    assert np.array_equal(bm.species["CT"],[("C",1),("EC",1)])
+    assert np.array_equal(bm.species["ET"],[("E",1),("EC",1)])
+    
+    assert len(bm.equilibria) == 1
+    assert np.array_equal(bm.equilibria["KE"][0],["C","E"])
+    assert np.array_equal(bm.equilibria["KE"][1],["EC"])
+
+    # built in properties
+    assert np.array_equal(bm.param_names,["KE"])
+    assert np.array_equal(bm.macro_species,["CT","ET"])
+    assert np.array_equal(bm.micro_species,["C","E","EC"])
