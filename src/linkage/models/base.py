@@ -2,6 +2,7 @@
 import numpy as np
 
 import re
+import warnings
 
 def _parse_rxn_side(rxn_side):
 
@@ -149,40 +150,6 @@ def _finalize_species(species,micro_species):
 
 
 def _parse_linkage_docstring(docstring):
-    """
-    Extract a thermodynamic linkage model from a docstring. The docstring should
-    have two sets of fields: equilibria and species. These are parsed like yaml,
-    where the fields should have ':' at the end and sub-fields are indented. All
-    other content in the docstring is ignored. Example:
-
-    ```
-    Some non-yaml stuff from the docstring. 
-
-    equilibria: 
-        X + Y -> Z; K1      # note about reaction 1
-        W + X -> Y + Z; K2  # note about reaction 2
-
-    # comment about the reaction
-    species:
-        AT = X + Y
-        BT = W + Z
-    ```
-
-    Rules
-    -----
-    1. Equilibria lines contain reactants (separated by '+'), a reaction
-       (specified by '->'), products (separated by '+'), and an equilibrium
-       constant (separated by ';'). 
-    2. Species lines contain the macro species (must be single entry), 
-       the definition (separated by '='), and the component micro species
-       (separated by '+'). 
-    3. Equilibrium constants and macrospecies must be unique. 
-    4. Equilibria can *only* contain microspecies, not macrospecies. 
-    5. Equilibrium constants must start with 'K'. 
-    6. Names of species and equilibrium constants cannot include spaces. 
-    7. White space in entries is ignored.
-    8. Anything after # is ignored. 
-    """
     
     # Figure out how much leader is in front due to python indent
     # in class definition
@@ -274,9 +241,52 @@ def _parse_linkage_docstring(docstring):
 class BindingModel:
     """
     Binding model. Must be subclassed to be used.
+
+    Subclass must define the get_concs method and three properties: param_names,
+    macro_species, and micro_species. See the docstrings on those functions for
+    details.  
+
+    The docstring for the subclass must describe the thermodynamic model. It
+    should have two sets of fields: equilibria and species. These are parsed
+    like yaml, where the fields should have ':' at the end and sub-fields are
+    indented. All other content in the docstring is ignored. Example:
+
+    ```
+    This is some non-yaml stuff from the docstring. 
+
+    equilibria: 
+        X + Y -> Z; K1      # note about reaction 1
+        W + X -> Y + Z; K2  # note about reaction 2
+
+    # comment about the reaction
+    species:
+        AT = X + Y
+        BT = W + Z
+
+    More non-yaml stuff.
+    ```
+
+    Rules for defining the equilibria
+    ---------------------------------
+
+    1. Equilibria lines contain reactants (separated by '+'), a reaction
+       (specified by '->'), products (separated by '+'), and an equilibrium
+       constant (separated by ';'). 
+    2. Species lines contain the macro species (must be single entry), 
+       the definition (separated by '='), and the component micro species
+       (separated by '+'). 
+    3. Equilibrium constants and macrospecies must be unique. 
+    4. Equilibria can only contain microspecies, not macrospecies. 
+    5. Equilibrium constants must start with 'K'. 
+    6. Names of species and equilibrium constants cannot include spaces. 
+    7. White space in entries is ignored.
+    8. Anything after # is ignored. 
     """
 
     def __init__(self):
+        """
+        Initialize the class. 
+        """
         
         equilibria, species, micro_species, macro_species = _parse_linkage_docstring(self.__doc__)
 
@@ -306,6 +316,47 @@ class BindingModel:
 
         self._equilibria = equilibria
         self._species = species
+
+    def _get_real_root(self,roots,upper_bounds=[]):
+        """
+        Get the real root between 0 and upper_bounds. 
+
+        Parameters
+        ----------
+        roots : numpy.ndarray
+            numpy array with roots to check
+        upper_bounds : list-like
+            list of upper bounds against which to check root.
+        """
+
+        to_check = [np.isreal(roots),
+                    roots >= 0]
+        if len(upper_bounds) > 0:
+            to_check.append(roots <= np.min(upper_bounds))
+        
+        # Get real root that that has value >= 0 and below upper bounds
+        mask = np.logical_and.reduce(to_check)
+        solution = np.unique(roots[mask])
+        
+        # No root matches condition. Warn and return np.nan. 
+        if len(solution) == 0:
+            warnings.warn("no roots found\n")
+            return np.nan 
+        
+        # Multiple roots match conditions. Warn and return np.nan
+        if len(solution) > 1:
+            
+            # Check whether the all roots are numerically close and thus 
+            # arise from float imprecision. If really have multiple roots, 
+            # return np.nan for all concentrations
+            close_mask = np.isclose(solution[0],solution)
+            if np.sum(close_mask) != len(solution):
+                warnings.warn("multiple roots found\n")
+                return np.nan
+        
+        # Return real component
+        return np.real(solution[0])
+                
     
     def get_concs(self,param_array,macro_array):
         """

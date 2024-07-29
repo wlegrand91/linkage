@@ -5,7 +5,6 @@ from linkage.models.base import BindingModel
 
 import numpy as np
 
-import warnings
 
 class SixStateEDTA(BindingModel):
     """
@@ -22,9 +21,6 @@ class SixStateEDTA(BindingModel):
         AT = I + A + 2*AC1 + AC2 + 2*AC3 + AC4
         CT = C + EC + 2*AC1 + 2*AC2 + 6*AC3 + 4*AC4
     """
-
-    def __init__(self):
-        super().__init__()
 
     def _get_free_c(self,KI,KE,K1,K2,K3,K4,AT,CT,ET):
         """
@@ -51,31 +47,13 @@ class SixStateEDTA(BindingModel):
         coef = np.array([alpha,beta,gamma,delta,epsilon,zeta,eta])
         P = np.polynomial.Polynomial(coef=coef)
         roots = P.roots()
-    
-        # The solution is a real root between 0 and CT. Pull this out.
-        mask = np.logical_and(np.isreal(roots),roots>=0,roots<=CT)
-        solution = np.unique(roots[mask])
-        
-        # There should be one unique solution; check for this. If this does
-        # not succeed, return np.nan
-        
-        # No real root between 0 and CT
-        if len(solution) == 0:
-            warnings.warn("no roots found\n")
-            return np.nan
-        
-        # Multiple real roots between 0 and CT
-        if len(solution) > 1:
-            
-            # Check whether the all roots are numerically close and thus 
-            # arise from float imprecision
-            close_mask = np.isclose(solution[0],solution)
-            if np.sum(close_mask) != len(solution):
-                warnings.warn("multiple roots found\n")
-                return np.nan
-    
-        # Return free calcium
-        return np.real(solution[0])
+
+        # Get real root between 0 and CT    
+        root = self._get_real_root(roots=roots,
+                                   upper_bounds=[CT])
+
+        return root
+
         
     def get_concs(self,param_array,macro_array):
         """

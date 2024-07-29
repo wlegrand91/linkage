@@ -7,6 +7,7 @@ from linkage.models.base import _parse_species_field
 from linkage.models.base import _finalize_microspecies
 from linkage.models.base import _finalize_species
 from linkage.models.base import _parse_linkage_docstring
+from linkage.models.base import BindingModel
 
 
 import numpy as np
@@ -511,3 +512,65 @@ def test__parse_linkage_docstring():
     
     assert np.array_equal(micro_species,["A","B","C"])
     assert np.array_equal(macro_species,["XT","YT"])
+
+
+def test_BindingModel__get_real_root():
+
+    # Should work
+    roots = np.array([-1,1])    
+    root = BindingModel._get_real_root(BindingModel,
+                                       roots=roots,
+                                       upper_bounds=[2])
+    assert root == 1
+
+    # Root too high
+    roots = np.array([-1,1])    
+    with pytest.warns():
+        root = BindingModel._get_real_root(BindingModel,
+                                           roots=roots,
+                                           upper_bounds=[0.1])
+    assert np.isnan(root)
+
+    # No real root
+    roots = np.array([1+2j,1+3j])
+    with pytest.warns():
+        root = BindingModel._get_real_root(BindingModel,
+                                           roots=roots,
+                                           upper_bounds=[10])
+    assert np.isnan(root)
+
+    # No positive root
+    roots = np.array([-1,-5])    
+    with pytest.warns():
+        root = BindingModel._get_real_root(BindingModel,
+                                           roots=roots,
+                                           upper_bounds=[10])
+    assert np.isnan(root)
+
+    # Complicated root that works
+    roots = np.array([-1,-5,1,20,1+3j])    
+    root = BindingModel._get_real_root(BindingModel,
+                                       roots=roots,
+                                       upper_bounds=[3,5])
+    assert root == 1
+
+    # Complicated root that will give multiple allowed values -- fail
+    roots = np.array([-1,-5,1,20,1+3j])    
+    with pytest.warns():
+        root = BindingModel._get_real_root(BindingModel,
+                                        roots=roots,
+                                        upper_bounds=[22,50])
+    assert np.isnan(root)
+
+    # no upper bound
+    roots = np.array([-1,-5,1,1+3j])    
+    root = BindingModel._get_real_root(BindingModel,
+                                       roots=roots)
+    assert root == 1
+
+    # Multiple close roots
+    roots = np.array([-1,-5,1,1 + 1e-25])    
+    root = BindingModel._get_real_root(BindingModel,
+                                       roots=roots,
+                                       upper_bounds=[2])
+    assert root == 1
