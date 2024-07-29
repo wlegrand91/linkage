@@ -15,6 +15,7 @@ class SpecPoint(ExperimentalPoint):
                  obs_key,
                  micro_array,
                  macro_array,
+                 del_macro_array,
                  obs_mask,
                  denom):
         """
@@ -34,6 +35,9 @@ class SpecPoint(ExperimentalPoint):
         macro_array : np.ndarray (float)
             array holding concentrations of all macroscopic species, calculated
             elsewhere
+        del_macro_array : np.ndarray (float)
+            array holding change in concentrations of all macroscopic species 
+            from the syringe to this condition
         obs_mask : np.ndarray (bool or int)
             mask that grabs microscopic species from micro_array that correspond
             to the numerator when calculating the observable
@@ -46,7 +50,8 @@ class SpecPoint(ExperimentalPoint):
                          expt_idx=expt_idx,
                          obs_key=obs_key,
                          micro_array=micro_array,
-                         macro_array=macro_array)
+                         macro_array=macro_array,
+                         del_macro_array=del_macro_array)
         
         self._obs_mask = obs_mask
         self._denom = denom

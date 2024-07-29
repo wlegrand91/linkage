@@ -11,6 +11,7 @@ def test_SpecPoint():
     obs_key = "test"
     micro_array = np.ones((50,10),dtype=float)
     macro_array = np.ones((50,3),dtype=float)
+    del_macro_array = np.zeros((50,3),dtype=float)
     
     obs_mask = np.zeros(10,dtype=bool)
     obs_mask[1] = True
@@ -21,6 +22,7 @@ def test_SpecPoint():
                   obs_key=obs_key,
                   micro_array=micro_array,
                   macro_array=macro_array,
+                  del_macro_array=del_macro_array,
                   obs_mask=obs_mask,
                   denom=denom)
   
@@ -30,6 +32,7 @@ def test_SpecPoint():
 
     assert e._micro_array is micro_array
     assert e._macro_array is macro_array
+    assert e._del_macro_array is del_macro_array
 
     assert e._obs_mask is obs_mask
     assert e._denom == denom
@@ -37,12 +40,12 @@ def test_SpecPoint():
 def test_SpecPoint_calc_value():
 
 
-    idx = 0
     expt_idx = 1
     obs_key = "test"
 
     micro_array = np.ones((50,10),dtype=float)
     macro_array = np.ones((50,3),dtype=float)
+    del_macro_array = np.zeros((50,3),dtype=float)
     
     # Point 0 and 1 in micro array
     micro_array[0,1] = 50
@@ -64,6 +67,7 @@ def test_SpecPoint_calc_value():
                   obs_key=obs_key,
                   micro_array=micro_array,
                   macro_array=macro_array,
+                  del_macro_array=del_macro_array,
                   obs_mask=obs_mask,
                   denom=denom)
     
@@ -75,6 +79,7 @@ def test_SpecPoint_calc_value():
                   obs_key=obs_key,
                   micro_array=micro_array,
                   macro_array=macro_array,
+                  del_macro_array=del_macro_array,
                   obs_mask=obs_mask,
                   denom=denom)
     
@@ -94,6 +99,7 @@ def test_SpecPoint_calc_value():
                   obs_key=obs_key,
                   micro_array=micro_array,
                   macro_array=macro_array,
+                  del_macro_array=del_macro_array,
                   obs_mask=obs_mask,
                   denom=denom)
     
@@ -105,6 +111,7 @@ def test_SpecPoint_calc_value():
                   obs_key=obs_key,
                   micro_array=micro_array,
                   macro_array=macro_array,
+                  del_macro_array=del_macro_array,
                   obs_mask=obs_mask,
                   denom=denom)
     

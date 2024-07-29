@@ -149,8 +149,13 @@ class GlobalModel:
                 self._all_parameter_names.append(f"dH_{s[1:]}")
                 self._parameter_guesses.append(0.0)
 
+            # Heats of dilution
+            for k in self._bm.macro_species:
+                self._all_parameter_names.append(f"dil_{k}")
+                self._parameter_guesses.append(0.0)
+
             # Last enthalpy index is last entry
-            self._dh_param_end_idx = len(self._all_parameter_names) - 1
+            self._dh_param_end_idx = len(self._all_parameter_names)  - 1
     
 
     def _process_expt_fudge(self):
@@ -178,6 +183,7 @@ class GlobalModel:
         # Lists of arrays that can be referenced by the individual points
         self._micro_arrays = []
         self._macro_arrays = []
+        self._del_macro_arrays = []
 
         self._points = []
         self._y_obs = []
@@ -194,6 +200,18 @@ class GlobalModel:
             macro_array = np.array(expt.expt_concs.loc[:,self._bm.macro_species],
                                    dtype=float)
             self._macro_arrays.append(macro_array)
+
+            # ... and an array of holding change in macro species relative to 
+            # syringe. 
+            syringe_concs = []
+            for s in self._bm.macro_species:
+                if s in expt.syringe_contents:
+                    syringe_concs.append(expt.syringe_contents[s])
+                else:
+                    syringe_concs.append(0.0)
+            
+            del_macro_array = np.array(syringe_concs,dtype=float) - macro_array
+            self._del_macro_arrays.append(del_macro_array)
                     
             for obs in expt.observables:
                 
@@ -215,6 +233,7 @@ class GlobalModel:
                                        obs_key=obs,
                                        micro_array=self._micro_arrays[-1],
                                        macro_array=self._macro_arrays[-1],
+                                       del_macro_array=self._del_macro_arrays[-1],
                                        obs_mask=np.isin(self._bm.micro_species,
                                                         obs_info["observable_species"]),
                                        denom=den_index)
@@ -229,6 +248,7 @@ class GlobalModel:
                                       obs_key=obs,
                                       micro_array=self._micro_arrays[-1],
                                       macro_array=self._macro_arrays[-1],
+                                      del_macro_array=self._del_macro_arrays[-1],
                                       meas_vol_dilution=meas_vol_dilution,
                                       dh_param_start_idx=self._dh_param_start_idx,
                                       dh_param_end_idx=self._dh_param_end_idx + 1,

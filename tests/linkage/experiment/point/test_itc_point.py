@@ -12,9 +12,10 @@ def test_ITCPoint():
     obs_key = "test"
     micro_array = np.ones((50,10),dtype=float)
     macro_array = np.ones((50,3),dtype=float)
+    del_macro_array = 0.1*np.ones((50,3),dtype=float)
     meas_vol_dilution = 1.0
     dh_param_start_idx = 1
-    dh_param_end_idx = 3
+    dh_param_end_idx = 4
     dh_sign = np.array([1,-1])
     m0 = np.zeros(10,dtype=bool)
     m1 = np.zeros(10,dtype=bool)
@@ -27,6 +28,7 @@ def test_ITCPoint():
                  obs_key=obs_key,
                  micro_array=micro_array,
                  macro_array=macro_array,
+                 del_macro_array=del_macro_array,
                  meas_vol_dilution=meas_vol_dilution,
                  dh_param_start_idx=dh_param_start_idx,
                  dh_param_end_idx=dh_param_end_idx,
@@ -67,6 +69,9 @@ def test_ITCPoints_get_value():
     # Make a micro array that has two rows and five microspecies
     micro_array = np.zeros((2,5),dtype=float)
 
+    # del macro array
+    del_macro_array = np.zeros((2,3),dtype=float) - 0.1
+
     # Species 1 changes from 1.0 -> 1.2 over this step
     micro_array[0,1] = 1.0
     micro_array[1,1] = 1.2
@@ -80,7 +85,7 @@ def test_ITCPoints_get_value():
 
     # Parameters in array are 3 and 4
     dh_param_start_idx = 3
-    dh_param_end_idx = 5
+    dh_param_end_idx = 8
 
     # negative and positive sign for dH
     dh_sign = [-1,1]
@@ -100,6 +105,7 @@ def test_ITCPoints_get_value():
                  obs_key=obs_key,
                  micro_array=micro_array,
                  macro_array=macro_array,
+                 del_macro_array=del_macro_array,
                  meas_vol_dilution=meas_vol_dilution,
                  dh_param_start_idx=dh_param_start_idx,
                  dh_param_end_idx=dh_param_end_idx,

@@ -109,7 +109,7 @@ def test_GlobalModel__get_enthalpy_param(fake_spec_and_itc_data):
     assert gf._dh_param_start_idx is not None
     assert gf._dh_param_end_idx is not None
 
-    expected = ['dH_I','dH_E','dH_1','dH_2','dH_3','dH_4']
+    expected = ['dH_I','dH_E','dH_1','dH_2','dH_3','dH_4',"dil_AT","dil_CT","dil_ET"]
     dh_param = gf._all_parameter_names[gf._dh_param_start_idx:gf._dh_param_end_idx + 1]
     assert np.array_equal(expected,dh_param)
     
@@ -118,7 +118,7 @@ def test_GlobalModel__get_enthalpy_param(fake_spec_and_itc_data):
 
     # make sure it is correctly mapping reactions
     assert gf._dh_param_start_idx == 6
-    assert gf._dh_param_end_idx == 11
+    assert gf._dh_param_end_idx == 14
     assert np.array_equal(gf._dh_sign,np.ones(6,dtype=float))
     for i in range(6):
         assert np.sum(gf._dh_product_mask[i]) == 1

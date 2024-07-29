@@ -11,7 +11,8 @@ class ExperimentalPoint:
                  expt_idx,
                  obs_key,
                  micro_array,
-                 macro_array):
+                 macro_array,
+                 del_macro_array):
         """
         Should be sub-classed.
         """
@@ -21,6 +22,7 @@ class ExperimentalPoint:
         self._obs_key = obs_key
         self._micro_array = micro_array
         self._macro_array = macro_array
+        self._del_macro_array = del_macro_array
 
     @property
     def idx(self):

@@ -15,6 +15,7 @@ class ITCPoint(ExperimentalPoint):
                  obs_key,
                  micro_array,
                  macro_array,
+                 del_macro_array,
                  meas_vol_dilution,
                  dh_param_start_idx,
                  dh_param_end_idx,
@@ -37,6 +38,9 @@ class ITCPoint(ExperimentalPoint):
         macro_array : np.ndarray (float)
             array holding concentrations of all macroscopic species, calculated
             elsewhere
+        del_macro_array : np.ndarray (float)
+            array holding change in concentrations of all macroscopic species 
+            from the syringe to this condition
         meas_vol_dilution : float
             how much this shot diluted the measurement volume of the cell. This
             is calculated using the "titrator" function and corresponds to 
@@ -57,14 +61,21 @@ class ITCPoint(ExperimentalPoint):
                          expt_idx=expt_idx,
                          obs_key=obs_key,
                          micro_array=micro_array,
-                         macro_array=macro_array)
+                         macro_array=macro_array,
+                         del_macro_array=del_macro_array)
         
         self._meas_vol_dilution = meas_vol_dilution
         self._dh_param_start_idx = dh_param_start_idx
         self._dh_param_end_idx = dh_param_end_idx
         self._dh_sign = dh_sign
         self._dh_product_mask = dh_product_mask
-        
+
+        # Decide how to cut parameter array into enthalpies (first block of
+        # param) and heats of dilution (second block of param)
+        self._dh_first = self._dh_param_start_idx
+        self._dh_last = self._dh_first + len(self._dh_sign) 
+        self._dil_first = self._dh_last
+        self._dil_last = self._dh_param_end_idx
         
     def calc_value(self,parameters,*args,**kwargs):
         """
@@ -78,16 +89,19 @@ class ITCPoint(ExperimentalPoint):
             fit parameters (guesses array)
         """
 
-        dh_array = parameters[self._dh_param_start_idx:self._dh_param_end_idx]
-    
+        dh_array = parameters[self._dh_first:self._dh_last]
+        
         total_heat = 0.0
-        for i in range(len(dh_array)):
+        for i in range(len(self._dh_product_mask)):
 
             C_after  = self._micro_array[self._idx,self._dh_product_mask[i]]
             C_before = self._micro_array[self._idx-1,self._dh_product_mask[i]]
             dC = np.mean(C_after - C_before*self._meas_vol_dilution)
 
             total_heat += dh_array[i]*self._dh_sign[i]*dC
-        
-        
+
+        # # Dilution correction        
+        dil_array = parameters[self._dil_first:self._dil_last]
+        total_heat += np.sum(dil_array*self._del_macro_array[self._idx,:])
+
         return total_heat
