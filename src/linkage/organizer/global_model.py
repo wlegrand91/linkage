@@ -9,7 +9,9 @@ import copy
 
 class GlobalModel:
 
-    def __init__(self,expt_list,model_name="SixStateEDTA"):
+    def __init__(self,
+                 expt_list,
+                 model_name="SixStateEDTA"):
         """
         Initialize a global fit.
         
@@ -78,7 +80,6 @@ class GlobalModel:
         for p in self._bm.param_names:
             self._all_parameter_names.append(p)
             self._parameter_guesses.append(0.0)
-
 
         # Last binding model parameter index is last value
         self._bm_param_end_idx = len(self._all_parameter_names) - 1

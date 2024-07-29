@@ -3,10 +3,106 @@ import numpy as np
 
 import copy
 
+def sync_cell_and_syringe(cell_contents,
+                          syringe_contents):
+    
+    if not issubclass(type(cell_contents),dict):
+        err = "cell_contents should be a dictionary with initial cell concs\n"
+        raise ValueError(err)
+
+    if not issubclass(type(syringe_contents),dict):
+        err = "syringe_contents should be a dictionary with initial syringe concs\n"
+        raise ValueError(err)
+
+    # List of all species in syringe and cell
+    species = list(set(syringe_contents.keys()).union(set(cell_contents.keys())))
+    species.sort()
+    
+    # Copy syringe and cell dictionaries because we are about to modify
+    # them.
+    syringe_contents = copy.deepcopy(syringe_contents)
+    cell_contents = copy.deepcopy(cell_contents)
+    
+    # If a species is only in the syringe or cell, set it to zero in the
+    # other pool
+    for s in species:
+        if s not in syringe_contents:
+            syringe_contents[s] = 0.0
+        if s not in cell_contents:
+            cell_contents[s] = 0.0
+
+    return species, cell_contents, syringe_contents
+
+def _titr_constant_volume(cell_contents,
+                          syringe_contents,
+                          injection_array,
+                          cell_volume,
+                          out):
+
+    # For each injection
+    for i in range(len(injection_array)):
+
+        # Record current volume and injection
+        out["injection"].append(injection_array[i])
+        out["volume"].append(cell_volume)
+        out["meas_vol_dilution"].append(1)
+
+        # Update cell concs based on injected titrant
+        for s in cell_contents.keys():
+
+            prev_conc = cell_contents[s]
+            
+            a = (cell_volume - injection_array[i])*prev_conc
+            b = injection_array[i]*syringe_contents[s]
+
+            cell_contents[s] = (a + b)/cell_volume
+            out[s].append(cell_contents[s])
+
+    return out
+
+def _titr_increase_volume(cell_contents,
+                          syringe_contents,
+                          injection_array,
+                          cell_volume,
+                          out):
+    
+    # For each injection
+    start_vol = cell_volume
+    meas_vol_dilution = 1
+    for i in range(len(injection_array)):
+
+        # Get starting volume
+        if len(out["injection"]) > 0:
+            start_vol = out["volume"][-1]
+            meas_vol_dilution = (1 - injection_array[i]/cell_volume)
+
+        # Get volume after this injection is injected
+        new_vol = start_vol + injection_array[i]
+            
+        # Record current volume and injection
+        out["injection"].append(injection_array[i])
+        out["volume"].append(new_vol)
+        out["meas_vol_dilution"].append(meas_vol_dilution)
+
+        # Update cell concs based on injected titrant
+        for s in cell_contents.keys():
+
+            prev_conc = cell_contents[s]
+            
+            a = start_vol*prev_conc
+            b = injection_array[i]*syringe_contents[s]
+
+            cell_contents[s] = (a + b)/new_vol
+            out[s].append(cell_contents[s])
+
+    return out
+            
+
+
 def titrator(cell_contents,
              syringe_contents,
+             injection_array,
              cell_volume=1800,
-             injection_array=None,
              constant_volume=False):
     """
     Simulate a titrator injecting constant volumes into a cell. Calculate the
@@ -39,23 +135,9 @@ def titrator(cell_contents,
         pandas dataframe with the concentrations of all species in the cell
         versus injections in the experiment
     """
-    
-    # List of all species in syringe and cell
-    species = list(set(syringe_contents.keys()).union(set(cell_contents.keys())))
-    species.sort()
-    
-    # Copy syringe and cell dictionaries because we are about to modify
-    # them.
-    syringe_contents = copy.deepcopy(syringe_contents)
-    cell_contents = copy.deepcopy(cell_contents)
-    
-    # If a species is only in the syringe or cell, set it to zero in the
-    # other pool
-    for s in species:
-        if s not in syringe_contents:
-            syringe_contents[s] = 0.0
-        if s not in cell_contents:
-            cell_contents[s] = 0.0
+
+    species, cell_contents, syringe_contents = sync_cell_and_syringe(cell_contents,
+                                                                     syringe_contents)
     
     # Ensure injection_array is a numpy array of floats
     injection_array = np.array(injection_array,dtype=float)
@@ -67,45 +149,20 @@ def titrator(cell_contents,
     out["meas_vol_dilution"] = []
     for s in species:
         out[s] = []
-        
-    # For each injection
-    for i in range(len(injection_array)):
+    
 
-        # Get starting volume
-        if len(out["injection"]) == 0:
-            start_vol = cell_volume
-        else:
-            start_vol = out["volume"][-1]
-
-        # Get volume after this injection is injected
-        if constant_volume:
-            new_vol = start_vol
-        else:
-            new_vol = start_vol + injection_array[i]
-
-        if len(out["injection"]) == 0:
-            meas_vol_dilution = 1
-        else:
-            meas_vol_dilution = (1 - injection_array[i]/cell_volume)
-
-        # Record current volume and injection
-        out["injection"].append(injection_array[i])
-        out["volume"].append(new_vol)
-        out["meas_vol_dilution"].append(meas_vol_dilution)
-
-        # Update cell concs based on injected titrant
-        for s in species:
-
-            prev_conc = cell_contents[s]
-            
-            if constant_volume:
-                a = (cell_volume - injection_array[i])*prev_conc
-            else:
-                a = start_vol*prev_conc
-
-            b = injection_array[i]*syringe_contents[s]
-            cell_contents[s] = (a + b)/new_vol
-            out[s].append(cell_contents[s])
+    if constant_volume:
+        out = _titr_constant_volume(cell_contents,
+                                    syringe_contents,
+                                    injection_array,
+                                    cell_volume,
+                                    out)
+    else:
+        out = _titr_increase_volume(cell_contents,
+                                    syringe_contents,
+                                    injection_array,
+                                    cell_volume,
+                                    out)
             
     # Convert out to dataframe and return
     return pd.DataFrame(out)
