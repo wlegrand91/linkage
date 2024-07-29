@@ -4,8 +4,8 @@ import pytest
 
 import linkage
 from linkage.organizer.global_model import GlobalModel
-from linkage.experiment.experimental_point import SpecPoint
-from linkage.experiment.experimental_point import ITCPoint
+from linkage.experiment.point.spec_point import SpecPoint
+from linkage.experiment.point.itc_point import ITCPoint
 
 import numpy as np
 import pandas as pd
@@ -109,11 +109,21 @@ def test_GlobalModel__get_enthalpy_param(fake_spec_and_itc_data):
     assert gf._dh_param_start_idx is not None
     assert gf._dh_param_end_idx is not None
 
-    expected = ['dH_I','dH_A','dH_C','dH_E',
-                'dH_AC1','dH_AC2','dH_AC3','dH_AC4','dH_EC']
+    expected = ['dH_I','dH_E','dH_1','dH_2','dH_3','dH_4']
     dh_param = gf._all_parameter_names[gf._dh_param_start_idx:gf._dh_param_end_idx + 1]
-
     assert np.array_equal(expected,dh_param)
+    
+    # "EC","I","AC1","AC2","AC3","AC4"
+    order_in_class = np.array([8,0,4,5,6,7])
+
+    # make sure it is correctly mapping reactions
+    assert gf._dh_param_start_idx == 6
+    assert gf._dh_param_end_idx == 11
+    assert np.array_equal(gf._dh_sign,np.ones(6,dtype=float))
+    for i in range(6):
+        assert np.sum(gf._dh_product_mask[i]) == 1
+        assert np.arange(9,dtype=int)[gf._dh_product_mask[i]] == order_in_class[i]
+
 
     # Remove itc experiment; should have no enthalpies
     this_expt_list = copy.deepcopy(base_expt_list)
@@ -122,6 +132,8 @@ def test_GlobalModel__get_enthalpy_param(fake_spec_and_itc_data):
                      expt_list=this_expt_list)
     assert gf._dh_param_start_idx is None
     assert gf._dh_param_end_idx is None
+    assert gf._dh_sign is None
+    assert gf._dh_product_mask is None
 
 def test_GlobalModel__process_expt_fudge(fake_spec_and_itc_data):
 

@@ -1,6 +1,6 @@
 import linkage.models
-from linkage.experiment.experimental_point import SpecPoint
-from linkage.experiment.experimental_point import ITCPoint
+from linkage.experiment.point.spec_point import SpecPoint
+from linkage.experiment.point.itc_point import ITCPoint
 
 import numpy as np
 import pandas as pd
@@ -30,6 +30,9 @@ class GlobalModel:
         self._bm_param_end_idx = None
         self._dh_param_start_idx = None
         self._dh_param_end_idx = None
+        
+        self._dh_sign = None
+        self._dh_product_mask = None
 
         # list of all parameter names in the same order as guesses
         self._all_parameter_names = []
@@ -75,6 +78,7 @@ class GlobalModel:
         for p in self._bm.param_names:
             self._all_parameter_names.append(p)
             self._parameter_guesses.append(0.0)
+
 
         # Last binding model parameter index is last value
         self._bm_param_end_idx = len(self._all_parameter_names) - 1
@@ -122,9 +126,26 @@ class GlobalModel:
             # Index of first enthalpy
             self._dh_param_start_idx = len(self._all_parameter_names)
             
+            self._dh_sign = []
+            self._dh_product_mask = []
+            for k in self._bm.equilibria:
+
+                reactants = self._bm.equilibria[k][0]
+                products =self._bm.equilibria[k][1]
+
+                if len(products) <= len(reactants):
+                    self._dh_sign.append(1.0)
+                    key_species = products[:]
+                else:
+                    self._dh_sign.append(-1.0)
+                    key_species = reactants[:]
+
+                self._dh_product_mask.append(np.isin(self._bm.micro_species,
+                                                     key_species))
+
             # Names for all enthalpies
-            for s in self._bm.micro_species:
-                self._all_parameter_names.append(f"dH_{s}")
+            for s in self._bm.param_names:
+                self._all_parameter_names.append(f"dH_{s[1:]}")
                 self._parameter_guesses.append(0.0)
 
             # Last enthalpy index is last entry
@@ -209,7 +230,9 @@ class GlobalModel:
                                       macro_array=self._macro_arrays[-1],
                                       meas_vol_dilution=meas_vol_dilution,
                                       dh_param_start_idx=self._dh_param_start_idx,
-                                      dh_param_end_idx=self._dh_param_end_idx + 1)
+                                      dh_param_end_idx=self._dh_param_end_idx + 1,
+                                      dh_sign=self._dh_sign,
+                                      dh_product_mask=self._dh_product_mask)
         
                     else:
                         obs_type = obs_info["obs_type"]
