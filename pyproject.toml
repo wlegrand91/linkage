@@ -20,6 +20,7 @@ dependencies = [
   "numpy",
   "pandas",
   "matplotlib",
+  "openpyxl",
   "dataprob"
 ]
 
