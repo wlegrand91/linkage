@@ -91,8 +91,9 @@ def get_files(base_dir):
     return output
 
 @pytest.fixture(scope="module")
-def example_xyz():
-    return get_files(os.path.join("data","example-xyz"))
+def simulated_itc():
+
+    return get_files(os.path.join("data","simulated_itc"))
 
 @pytest.fixture(scope="module")
 def fake_spec_and_itc_data():
