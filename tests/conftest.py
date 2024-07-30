@@ -84,6 +84,9 @@ def get_files(base_dir):
 
     # make sure output is sorted stably
     for k in output:
+        if issubclass(type(output[k]),str):
+            continue
+
         new_output = list(output[k])
         new_output.sort()
         output[k] = new_output
@@ -93,7 +96,27 @@ def get_files(base_dir):
 @pytest.fixture(scope="module")
 def simulated_itc():
 
-    return get_files(os.path.join("data","simulated_itc"))
+    files = get_files(os.path.join("data","simulated_itc"))
+        
+    blank = linkage.Experiment(expt_data=files["blank_expt.csv"],
+                               cell_contents={},
+                               syringe_contents={"ET":5e-3},
+                               cell_volume=280)
+    blank.define_itc_observable(obs_column="heat",
+                                obs_stdev=0.003)
+    
+    expt = linkage.Experiment(expt_data=files["binding_expt.csv"],
+                              cell_contents={"CT":0.5e-3},
+                              syringe_contents={"ET":5e-3},
+                              cell_volume=280)
+    expt.define_itc_observable(obs_column="heat",
+                               obs_stdev=0.003)
+    
+    guesses = np.array([7,-11900,0,-50])
+
+    return {"files":files,
+            "expt_list":[blank,expt],
+            "guesses":guesses}
 
 @pytest.fixture(scope="module")
 def fake_spec_and_itc_data():

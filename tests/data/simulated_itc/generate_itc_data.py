@@ -3,15 +3,25 @@ import linkage
 
 import numpy as np
 import pandas as pd
+from matplotlib import pyplot as plt
 
 def create_fake_itc_data():
 
     np.random.seed(20070401)
     
-    # Load ITC data
+    # Randomness we are going to inject into our simulated results
+    err = 0.003
+    
+    # Names of series
+    names = ["blank","binding"]
+
+    # Create fake data that has the number of injections we want, but no sane
+    # values. 
     itc_data = pd.DataFrame({"injection":2*np.ones(25),
                              "heat":np.random.normal(0,1,25)})
     
+    # Create an experiment from the fake data where we titrate ET into an 
+    # empty cell
     a = linkage.experiment.Experiment(expt_data=itc_data.copy(),
                                       cell_contents={},
                                       syringe_contents={"ET":5e-3},
@@ -21,6 +31,8 @@ def create_fake_itc_data():
                             obs_stdev=0.1)
     
     
+    # Create an experiment from the fake data where we titrate ET into a cell
+    # with CT. 
     b = linkage.experiment.Experiment(expt_data=itc_data.copy(),
                                       cell_contents={"CT":0.5e-3},
                                       syringe_contents={"ET":5e-3},
@@ -29,27 +41,34 @@ def create_fake_itc_data():
     b.define_itc_observable(obs_column="heat",
                             obs_stdev=0.1)
     
-    expt_list = [a,b] 
-    
+    # Create a linkage model using the CaEDTA binding model and these two 
+    # experiments. 
     gm = linkage.GlobalModel(model_name="CaEDTA",
-                             expt_list=expt_list)
+                             expt_list=[a,b])
     
-    # log10(KE), dH_C, dH_E, dH_EC
+    # [log10('KE'), 'dH_E', 'nuisance_dil_CT', 'nuisance_dil_ET']
     guesses = np.array([7,-11900,0,-50])
     
-    err = 0.003
-    initial_values = gm.model(guesses)
-    gm._y_obs = gm._y_calc + np.random.normal(0,err,len(gm._y_calc))
+    # Calculate the values for our model. This creates _y_calc 
+    y_calc = gm.model(guesses)
+
+    # Hack for the simulation. Set y_obs and y_stdev to y_calc
+    gm._y_obs = y_calc + np.random.normal(0,err,len(y_calc))
     gm._y_stdev = np.ones(len(gm._y_obs))*err
     
+    # Plot results
+    fig, ax = plt.subplots(1,figsize=(6,6))
     df = gm.as_df
+    for expt in np.unique(df["expt_id"]):
+        this_df = df.loc[df["expt_id"] == expt,:]
+        ax.plot(this_df["ET"],this_df["y_obs"],'o',label=names[expt])
+
+    ax.legend()
+    ax.set_xlabel("injection number")
+    ax.set_ylabel("measured heat")
+    fig.savefig("simulated_itc.pdf")
     
-    # for expt in np.unique(df["expt_id"]):
-    #     this_df = df.loc[df["expt_id"] == expt,:]
-    #     plt.plot(this_df["ET"],this_df["y_obs"],'o')
-    
-    
-    names = ["blank","binding"]
+    # Now create output files
     for expt in np.unique(gm.as_df["expt_id"]):
         this_df = gm.as_df.loc[gm.as_df["expt_id"] == expt,:]
         

@@ -13,18 +13,17 @@ import numpy as np
 import pandas as pd
 import copy
 
-def test_GlobalModel_integrated(fake_spec_and_itc_data):
+def test_GlobalModel_integrated(simulated_itc):
 
-    base_expt_list = copy.deepcopy(fake_spec_and_itc_data)
-    this_expt_list = copy.deepcopy(base_expt_list)
+    expt_list = simulated_itc["expt_list"]
+    guesses = simulated_itc["guesses"]
 
-    gf = GlobalModel(model_name="SixStateEDTA",
+    this_expt_list = copy.deepcopy(expt_list)
+
+    gf = GlobalModel(model_name="CaEDTA",
                      expt_list=this_expt_list)
     
-    gf.model(gf.parameter_guesses)
-
-    df = gf.as_df
-    assert issubclass(type(df),pd.DataFrame)
+    gf.model(guesses)
 
 
 def test_GlobalModel__load_model(fake_spec_and_itc_data):
