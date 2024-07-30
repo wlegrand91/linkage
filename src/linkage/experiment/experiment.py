@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 import copy
+import warnings
 
 def _load_dataframe(expt_data):
 
@@ -66,9 +67,37 @@ class Experiment:
                  expt_data,
                  cell_contents,
                  syringe_contents,
+                 cell_volume,
                  conc_to_float=None,
-                 cell_volume=1800,
                  constant_volume=False):
+        """
+        Load an experimental dataset.
+        
+        Parameters
+        ----------
+        expt_data : str or pandas.DataFrame
+            DataFrame with experimental data. If passed in as a string, try to 
+            read from file. Otherwise, use as dataframe. DataFrame must have 
+            an 'injection' column holding injection volumes for experiments.
+        cell_contents : dict
+            dictionary keying macrospecies from the binding model to their 
+            concentrations in the cell prior to any injection
+        syringe_contents : dict
+            dictionary keying macrospecies from the binding model to their
+            concentrations in the syringe. 
+        cell_volume : float
+            volume of the cell into which the titration is done. the units of
+            this volume should match the units of the 'injection' column. 
+        conc_to_float : str, optional
+            name of the most macrospecies with the most uncertain concentration
+            in the experiment (usually a macromolecule). If specified, this 
+            concentration will be allowed to float in the fit (look for a 
+            "fudge" parameter). 
+        constant_volume : bool, default=False
+            if True, an injection with volume X uL is treated as "suck out X uL
+            and send to waste, then add X uL from syringe." if False, each 
+            injection increases the total volume. 
+        """
 
         # Process and clean up input experimental data
         expt_data = _load_dataframe(expt_data=expt_data)
@@ -95,51 +124,125 @@ class Experiment:
 
         self._conc_to_float = conc_to_float
         self._observables = {}
-    
-    def add_observable(self,
-                       column_name,
-                       obs_type,
-                       observable_species=None,
-                       denominator=None):
 
-        if column_name not in self._expt_data:
+    def _define_generic_observable(self,
+                                   obs_column,
+                                   obs_stdev):
+        """
+        Define observable, making sure obs_column and obs_stdev columns are 
+        sane. If obs_stdev is a float, make a new column named {obs_column}_stdev
+        with the value loaded in. 
+        """
+            
+        if obs_column not in self._expt_data.columns:
             err = "column_name should be one of the columns in the experimental data\n"
             raise ValueError(err)
 
-        if column_name == "injection":
+        if obs_column == "injection":
             err = "column_name cannot be injection\n"
             raise ValueError(err)
+    
+        # Deal with uncertainty
+        if obs_stdev in self._expt_data.columns:
+            obs_stdev_column = obs_stdev
+        else:
+            obs_stdev_column = f"{obs_column}_stdev"
+            
+            try:
+                obs_stdev = float(obs_stdev)
+            except Exception as e:
+                err = "obs_stdev should be either the name of a column or a single value\n"
+                raise ValueError(err) from e
+            
+            self._expt_data.loc[:,obs_stdev_column] = obs_stdev
 
-        if obs_type not in ["spec","itc"]:
-            err = "obs_type should be 'spec' or 'itc'\n"
+        if obs_column in self._observables:
+            w = f"obs_column '{obs_column}' was already adding. Overwriting\n"
+            warnings.warn(w)
+
+
+        return obs_column, obs_stdev_column
+
+    def define_itc_observable(self,
+                              obs_column,
+                              obs_stdev):
+        """
+        Define an ITC observable for this experiment. 
+        
+        Parameters
+        ----------
+        obs_column : str
+            name of column in initial dataframe that has the experimental
+            observable. 
+        obs_stdev : str or float, optional
+            If str, use as name of column in initial dataframe that has the
+            standard deviation on each observation.  If float, use this single
+            value as the standard deviation on all observations.  
+        """
+
+        obs_column, obs_stdev_column = self._define_generic_observable(obs_column=obs_column,
+                                                                       obs_stdev=obs_stdev)
+        
+        self._observables[obs_column] = {"type":"itc",
+                                         "stdev_column":obs_stdev_column}
+
+
+    def define_spectroscopic_observable(self,
+                                        obs_column,
+                                        obs_stdev,
+                                        obs_microspecies,
+                                        obs_macrospecies):
+        """
+        Define a spectroscopic observable for this experiment. 
+        
+        Parameters
+        ----------
+        obs_column : str
+            name of column in initial dataframe that has the experimental
+            observable. 
+        obs_stdev : str or float, optional
+            If str, use as name of column in initial dataframe that has the
+            standard deviation on each observation.  If float, use this single
+            value as the standard deviation on all observations.  
+        obs_microspecies : list-like
+            list of microscopic species from binding model that contribute to 
+            this spectroscopic signal. 
+        obs_macrospecies: str
+            name of the macroscopic species from the binding model to use as the
+            denominator for the observable. (This must be somewhere in the
+            cell_contents or syringe_contents dictionaries as well.)
+
+        Example
+        -------
+        Consider the binding reaction where the spectroscopic signal of "A" 
+        changes when "B" binds:
+
+        AT = A + AB
+        BT = B + AB
+
+        obs_microspecies would be ["AB"] and obs_macrospecies would be "AT".     
+        """
+
+        obs_column, obs_stdev_column = self._define_generic_observable(obs_column=obs_column,
+                                                                       obs_stdev=obs_stdev)
+
+        if issubclass(type(obs_microspecies),str):
+            obs_microspecies = [obs_microspecies]
+
+        if not hasattr(obs_microspecies,'__iter__'):
+            err = "obs_microspecies should be a list of species contributing to signal\n"
             raise ValueError(err)
 
-        if obs_type == "spec":
-            
-            if observable_species is None:
-                err = "observable_species must be specified for a 'spec' experiment\n"
-                raise ValueError(err)
+        expt_macrospecies = self._expt_concs.columns
+        expt_macrospecies = [m for m in expt_macrospecies if m != "injection"]
+        if obs_macrospecies not in expt_macrospecies:
+            err = f"obs_macrospecies must be one of: {','.join(expt_macrospecies)}\n"
+            raise ValueError(err)
 
-            if issubclass(type(observable_species),str):
-                observable_species = [observable_species]
-
-            if not hasattr(observable_species,'__iter__'):
-                err = "observable_species should be a list of species contributing to signal\n"
-                raise ValueError(err)
-            
-            if denominator is None:
-                err = "denominator must be specified for a 'spec' experiment.\n"
-                raise ValueError(err)
-
-            macrospecies = self._expt_concs.columns
-            macrospecies = [m for m in macrospecies if m != "injection"]
-            if denominator not in macrospecies:
-                err = f"denominator must be one of: {','.join(macrospecies)}\n"
-                raise ValueError(err)
-
-        self._observables[column_name] = {"obs_type":obs_type,
-                                          "observable_species":observable_species,
-                                          "denominator":denominator}
+        self._observables[obs_column] = {"type":"spec",
+                                         "stdev_column":obs_stdev_column,
+                                         "microspecies":obs_microspecies,
+                                         "macrospecies":obs_macrospecies}
  
     def add_expt_conc_column(self,new_column,conc_vector=None):
 

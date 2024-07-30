@@ -147,11 +147,12 @@ def test_Experiment():
                     conc_to_float="NOT_THERE",
                     cell_volume=cell_volume,
                     constant_volume=True)
-        
-def test_Experiment_add_observable():
+
+def test_Experiment__define_generic_observable():
 
     expt_data = pd.DataFrame({"injection":[0,1,1],
-                              "obs":[1,2,3]})
+                              "obs":[1,2,3],
+                              "obs_stdev":[0.1,0.2,0.3]})
     cell_contents = {"A":10}
     syringe_contents = {"B":10}
     conc_to_float = None
@@ -161,33 +162,107 @@ def test_Experiment_add_observable():
     e = Experiment(expt_data=expt_data,
                    cell_contents=cell_contents,
                    syringe_contents=syringe_contents,
+                   cell_volume=cell_volume,
+                   conc_to_float=conc_to_float,
+                   constant_volume=constant_volume)
+    
+    obs_column, obs_stdev_column = e._define_generic_observable(obs_column="obs",
+                                                                obs_stdev="obs_stdev")
+    assert obs_column == "obs"
+    assert obs_stdev_column == "obs_stdev"
+
+    with pytest.raises(ValueError):
+        e._define_generic_observable(obs_column="not_a_column",
+                                     obs_stdev="obs_stdev")
+        
+    with pytest.raises(ValueError):
+        e._define_generic_observable(obs_column="injection",
+                                     obs_stdev="obs_stdev")
+        
+    with pytest.raises(ValueError):
+        e._define_generic_observable(obs_column="obs",
+                                     obs_stdev="not_a_column")
+
+    assert np.array_equal(e._expt_data["obs_stdev"],[0.1,0.2,0.3])
+    obs_column, obs_stdev_column = e._define_generic_observable(obs_column="obs",
+                                                                obs_stdev=1.5)
+
+    assert obs_column == "obs"
+    assert obs_stdev_column == "obs_stdev"
+    assert np.array_equal(e._expt_data["obs_stdev"],[1.5,1.5,1.5])
+
+    # add twice, which should throw a warning
+    e = Experiment(expt_data=expt_data,
+                cell_contents=cell_contents,
+                syringe_contents=syringe_contents,
+                cell_volume=cell_volume,
+                conc_to_float=conc_to_float,
+                constant_volume=constant_volume)
+    
+    # add an itc observable
+    e.define_itc_observable(obs_column="obs",obs_stdev="obs_stdev")
+    
+    # should now warn because already added obs_column = "obs" to data
+    with pytest.warns():
+        obs_column, obs_stdev_column = e._define_generic_observable(obs_column="obs",
+                                                                    obs_stdev="obs_stdev")
+    
+
+def test_Experiment_define_spectroscopic_observable():
+
+    expt_data = pd.DataFrame({"injection":[0,1,1],
+                              "obs":[1,2,3],
+                              "obs_stdev":[0.1,0.2,0.3]})
+    cell_contents = {"A":10}
+    syringe_contents = {"B":10}
+    conc_to_float = None
+    cell_volume = 100
+    constant_volume = False
+
+    e = Experiment(expt_data=expt_data,
+                   cell_contents=cell_contents,
+                   syringe_contents=syringe_contents,
+                   cell_volume=cell_volume,
+                   conc_to_float=conc_to_float,
+                   constant_volume=constant_volume)
+    
+    e.define_spectroscopic_observable(obs_column="obs",
+                                      obs_stdev="obs_stdev",
+                                      obs_microspecies=["anything"],
+                                      obs_macrospecies="A")
+    assert e._observables["obs"]["type"] == "spec"
+    assert np.array_equal(e._observables["obs"]["microspecies"],["anything"])
+    assert e._observables["obs"]["macrospecies"] == "A"
+    
+    e = Experiment(expt_data=expt_data,
+                   cell_contents=cell_contents,
+                   syringe_contents=syringe_contents,
                    conc_to_float=conc_to_float,
                    cell_volume=cell_volume,
                    constant_volume=constant_volume)
-    
-    e.add_observable(column_name="obs",
-                     obs_type="spec",
-                     observable_species=["anything"],
-                     denominator="A")
-    assert e._observables["obs"]["obs_type"] == "spec"
-    assert np.array_equal(e._observables["obs"]["observable_species"],["anything"])
-    assert e._observables["obs"]["denominator"] == "A"
-    
+
     # Bad observable column
-    e = Experiment(expt_data=expt_data,
-                   cell_contents=cell_contents,
-                   syringe_contents=syringe_contents,
-                   conc_to_float=conc_to_float,
-                   cell_volume=cell_volume,
-                   constant_volume=constant_volume)
-
     with pytest.raises(ValueError):
-        e.add_observable(column_name="not_a_column",
-                         obs_type="spec",
-                         observable_species=["anything"],
-                         denominator="A")
+        e.define_spectroscopic_observable(obs_column="not_a_column",
+                                        obs_stdev="obs_stdev",
+                                        obs_microspecies=["anything"],
+                                        obs_macrospecies="A")
         
-    # Bad denominator
+    # Bad obs_stdev column
+    with pytest.raises(ValueError):
+        e.define_spectroscopic_observable(obs_column="obs",
+                                        obs_stdev="not_a_column",
+                                        obs_microspecies=["anything"],
+                                        obs_macrospecies="A")
+        
+    # good obs_stdev, but as float
+    e.define_spectroscopic_observable(obs_column="obs",
+                                      obs_stdev=1.5,
+                                      obs_microspecies=["anything"],
+                                      obs_macrospecies="A")
+    assert np.array_equal(e._expt_data["obs_stdev"],[1.5,1.5,1.5])
+
+
     e = Experiment(expt_data=expt_data,
                    cell_contents=cell_contents,
                    syringe_contents=syringe_contents,
@@ -195,74 +270,61 @@ def test_Experiment_add_observable():
                    cell_volume=cell_volume,
                    constant_volume=constant_volume)
 
+    # Bad obs_macrospecies column
     with pytest.raises(ValueError):
-        e.add_observable(column_name="obs",
-                         obs_type="spec",
-                         observable_species=["anything"],
-                         denominator="not_a_species")
+        e.define_spectroscopic_observable(obs_column="obs",
+                                        obs_stdev="obs_stdev",
+                                        obs_microspecies=["anything"],
+                                        obs_macrospecies="not_in_cell_or_syringe")
                 
-    # No observable species
+    # obs_microspecies as a single value
+    e.define_spectroscopic_observable(obs_column="obs",
+                                      obs_stdev=1.5,
+                                      obs_microspecies="anything",
+                                      obs_macrospecies="A")
+    assert np.array_equal(e._observables["obs"]["microspecies"],["anything"])
+
+    # obs_microspecies as multiple values
     e = Experiment(expt_data=expt_data,
                    cell_contents=cell_contents,
                    syringe_contents=syringe_contents,
                    conc_to_float=conc_to_float,
                    cell_volume=cell_volume,
                    constant_volume=constant_volume)
+    e.define_spectroscopic_observable(obs_column="obs",
+                                      obs_stdev=1.5,
+                                      obs_microspecies=["anything","else"],
+                                      obs_macrospecies="A")
+    assert np.array_equal(e._observables["obs"]["microspecies"],["anything","else"])
 
+
+    # bad obs_microspecies
+    e = Experiment(expt_data=expt_data,
+                   cell_contents=cell_contents,
+                   syringe_contents=syringe_contents,
+                   conc_to_float=conc_to_float,
+                   cell_volume=cell_volume,
+                   constant_volume=constant_volume)
     with pytest.raises(ValueError):
-        e.add_observable(column_name="obs",
-                         obs_type="spec",
-                         observable_species=None,
-                         denominator="A")
-    
-    # Bad observable species
-    e = Experiment(expt_data=expt_data,
-                   cell_contents=cell_contents,
-                   syringe_contents=syringe_contents,
-                   conc_to_float=conc_to_float,
-                   cell_volume=cell_volume,
-                   constant_volume=constant_volume)
-
-    with pytest.raises(ValueError):
-        e.add_observable(column_name="obs",
-                         obs_type="spec",
-                         observable_species=1,
-                         denominator="A")
-    
-
-    # Observable species as list
-    e = Experiment(expt_data=expt_data,
-                   cell_contents=cell_contents,
-                   syringe_contents=syringe_contents,
-                   conc_to_float=conc_to_float,
-                   cell_volume=cell_volume,
-                   constant_volume=constant_volume)
-    
-    e.add_observable(column_name="obs",
-                     obs_type="spec",
-                     observable_species="anything",
-                     denominator="A")
-    assert e._observables["obs"]["obs_type"] == "spec"
-    assert np.array_equal(e._observables["obs"]["observable_species"],["anything"])
-    assert e._observables["obs"]["denominator"] == "A"
+        e.define_spectroscopic_observable(obs_column="obs",
+                                          obs_stdev="obs_stdev",
+                                          obs_microspecies=1.5,
+                                          obs_macrospecies="A")
 
 
-    # Disallowed column name
-    e = Experiment(expt_data=expt_data,
-                   cell_contents=cell_contents,
-                   syringe_contents=syringe_contents,
-                   conc_to_float=conc_to_float,
-                   cell_volume=cell_volume,
-                   constant_volume=constant_volume)
+def test_Experiment_define_itc_observable():
 
-    with pytest.raises(ValueError):
-        e.add_observable(column_name="injection",
-                         obs_type="spec",
-                         observable_species=["anything"],
-                         denominator="A")
-        
+    expt_data = pd.DataFrame({"injection":[0,1,1],
+                              "obs":[1,2,3],
+                              "obs_stdev":[0.1,0.2,0.3]})
+    cell_contents = {"A":10}
+    syringe_contents = {"B":10}
+    conc_to_float = None
+    cell_volume = 100
+    constant_volume = False
 
-    # Send in ITC experiment
+    # This function is a light wrapper for _define_generic_observable. Don't 
+    # check it's validation, but do make sure we assign values correctly. 
     e = Experiment(expt_data=expt_data,
                    cell_contents=cell_contents,
                    syringe_contents=syringe_contents,
@@ -270,28 +332,13 @@ def test_Experiment_add_observable():
                    cell_volume=cell_volume,
                    constant_volume=constant_volume)
     
-    e.add_observable(column_name="obs",
-                     obs_type="itc",
-                     observable_species=None,
-                     denominator=None)
-    assert e._observables["obs"]["obs_type"] == "itc"
-    assert e._observables["obs"]["observable_species"] is None
-    assert e._observables["obs"]["denominator"] is None
-
-    # Observable not recognized
-    e = Experiment(expt_data=expt_data,
-                   cell_contents=cell_contents,
-                   syringe_contents=syringe_contents,
-                   conc_to_float=conc_to_float,
-                   cell_volume=cell_volume,
-                   constant_volume=constant_volume)
-
-    with pytest.raises(ValueError):
-        e.add_observable(column_name="obs",
-                         obs_type="not_really_osbervable",
-                         observable_species=["anything"],
-                         denominator="A")
-        
+    e.define_itc_observable(obs_column="obs",
+                            obs_stdev="obs_stdev")
+    
+    assert len(e._observables["obs"]) == 2
+    assert e._observables["obs"]["type"] == "itc"
+    assert e._observables["obs"]["stdev_column"] == "obs_stdev"
+    
 
 def test_add_expt_column():
 

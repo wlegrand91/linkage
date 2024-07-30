@@ -112,17 +112,26 @@ def fake_spec_and_itc_data():
                                     cell_contents={"AT":50e-6,
                                                     "CT":0.5e-3},
                                     syringe_contents={"ET":1e-3},
-                                    conc_to_float="AT")
+                                    conc_to_float="AT",
+                                    cell_volume=1800)
 
-    e.add_observable("cd222","spec",observable_species="I",denominator="AT")
-    e.add_observable("cd240","spec",observable_species=["I","A"],denominator="AT")
+    e.define_spectroscopic_observable(obs_column="cd222",
+                                      obs_stdev=0.1,
+                                      obs_microspecies="I",
+                                      obs_macrospecies="AT")
+    e.define_spectroscopic_observable(obs_column="cd240",
+                                      obs_stdev=0.1,
+                                      obs_microspecies=["I","A"],
+                                      obs_macrospecies="AT")
 
     # Load ITC data
     f = linkage.experiment.Experiment(itc_data,
                 cell_contents={"CT":0.5e-3},
                 syringe_contents={"ET":1e-3},
-                conc_to_float=None)
-    f.add_observable("heat","itc")
+                conc_to_float=None,
+                cell_volume=1800)
+    f.define_itc_observable(obs_column="heat",
+                            obs_stdev=0.1)
 
     expt_list = [e,f]
 

@@ -94,9 +94,21 @@ class ITCPoint(ExperimentalPoint):
         total_heat = 0.0
         for i in range(len(self._dh_product_mask)):
 
-            C_after  = self._micro_array[self._idx,self._dh_product_mask[i]]
+            # Concentration of relevant microspecies before the injection 
             C_before = self._micro_array[self._idx-1,self._dh_product_mask[i]]
-            dC = np.mean(C_after - C_before*self._meas_vol_dilution)
+
+            # Concentration of relevant microspecies after the injection
+            C_after  = self._micro_array[self._idx,self._dh_product_mask[i]]
+            
+            # Concentration change in the cell itself (observable part) 
+            # depends on dilution factor. 
+            del_C = C_after - C_before*self._meas_vol_dilution
+
+            # Treat concentration change as the *mean* of all species in 
+            # dh_product_mask. For a simple reaction A + B -> C, this would be
+            # the mean of the change in "C". For a more complicated reaction, 
+            # this would be A + B -> C + D, this would be mean(dC,dD). 
+            dC = np.mean(del_C)
 
             total_heat += dh_array[i]*self._dh_sign[i]*dC
 
