@@ -5,7 +5,27 @@ import copy
 
 def sync_cell_and_syringe(cell_contents,
                           syringe_contents):
+    """
+    Make sure the same species are in both cell_contents and syringe_contents. 
+    Any species present in one but not the other are assigned concentrations
+    of 0.0.
+
+    Parameters
+    ----------
+    cell_contents : dict
+        dictionary with species as keys and cell concentrations as values 
+    syringe_contents : dict
+        dictionary with species as keys and syringe concentrations as values 
     
+    Returns
+    -------
+    species : list
+        sorted list of all species seen 
+    cell_contents : dict
+        cell_contents dict with concs of zero for missing species
+    syringe_contents : dict
+        syringe_contents dict with concs of zero for missing species
+    """
     if not issubclass(type(cell_contents),dict):
         err = "cell_contents should be a dictionary with initial cell concs\n"
         raise ValueError(err)
@@ -67,33 +87,31 @@ def _titr_increase_volume(cell_contents,
                           out):
     
     # For each injection
-    start_vol = cell_volume
+    current_volume = cell_volume
     meas_vol_dilution = 1
     for i in range(len(injection_array)):
 
-        # Get starting volume
-        if len(out["injection"]) > 0:
-            start_vol = out["volume"][-1]
-            meas_vol_dilution = (1 - injection_array[i]/cell_volume)
+        meas_vol_dilution = (1 - injection_array[i]/cell_volume)
 
         # Get volume after this injection is injected
-        new_vol = start_vol + injection_array[i]
+        new_volume = current_volume + injection_array[i]
             
         # Record current volume and injection
         out["injection"].append(injection_array[i])
-        out["volume"].append(new_vol)
+        out["volume"].append(new_volume)
         out["meas_vol_dilution"].append(meas_vol_dilution)
 
         # Update cell concs based on injected titrant
         for s in cell_contents.keys():
 
-            prev_conc = cell_contents[s]
-            
-            a = start_vol*prev_conc
+            a = current_volume*cell_contents[s]
             b = injection_array[i]*syringe_contents[s]
 
-            cell_contents[s] = (a + b)/new_vol
+            cell_contents[s] = (a + b)/new_volume
             out[s].append(cell_contents[s])
+
+        # Update volume
+        current_volume = new_volume
 
     return out
             
@@ -136,6 +154,7 @@ def titrator(cell_contents,
         versus injections in the experiment
     """
 
+    # Make sure all species are present in the cell and syringe dictionaries
     species, cell_contents, syringe_contents = sync_cell_and_syringe(cell_contents,
                                                                      syringe_contents)
     
