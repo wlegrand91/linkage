@@ -1,0 +1,1 @@
+from linkage.organizer.global_model import GlobalModel

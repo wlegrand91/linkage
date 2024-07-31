@@ -1,2 +1,2 @@
-include src/linkage/data/
-include src/linkage/data/*
+include tests/data/
+include tests/data/*

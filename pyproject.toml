@@ -10,7 +10,7 @@ version = {attr = "linkage.__version__.__version__"}
 
 [tool.setuptools.package-data]
 "*" = [
-  "src/linkage/data/*"
+  "tests/data/*"
 ]
 
 [project]
@@ -20,6 +20,7 @@ dependencies = [
   "numpy",
   "pandas",
   "matplotlib",
+  "openpyxl",
   "dataprob"
 ]
 

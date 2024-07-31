@@ -1,4 +1,10 @@
 import pytest
+
+import linkage
+
+import pandas as pd
+import numpy as np
+
 import os
 import glob
 
@@ -78,6 +84,9 @@ def get_files(base_dir):
 
     # make sure output is sorted stably
     for k in output:
+        if issubclass(type(output[k]),str):
+            continue
+
         new_output = list(output[k])
         new_output.sort()
         output[k] = new_output
@@ -85,5 +94,69 @@ def get_files(base_dir):
     return output
 
 @pytest.fixture(scope="module")
-def example_xyz():
-    return get_files(os.path.join("data","example-xyz"))
+def simulated_itc():
+
+    files = get_files(os.path.join("data","simulated_itc"))
+        
+    blank = linkage.Experiment(expt_data=files["blank_expt.csv"],
+                               cell_contents={},
+                               syringe_contents={"ET":5e-3},
+                               cell_volume=280)
+    blank.define_itc_observable(obs_column="heat",
+                                obs_stdev=0.003)
+    
+    expt = linkage.Experiment(expt_data=files["binding_expt.csv"],
+                              cell_contents={"CT":0.5e-3},
+                              syringe_contents={"ET":5e-3},
+                              cell_volume=280)
+    expt.define_itc_observable(obs_column="heat",
+                               obs_stdev=0.003)
+    
+    guesses = np.array([7,-11900,0,-50])
+
+    return {"files":files,
+            "expt_list":[blank,expt],
+            "guesses":guesses}
+
+@pytest.fixture(scope="module")
+def fake_spec_and_itc_data():
+
+    # Fake data
+    expt_data = pd.DataFrame({"injection":25*np.ones(50),
+                            "cd222":np.random.normal(0,1,50),
+                            "cd240":np.random.normal(0,1,50)})
+    expt_data.loc[expt_data.index[0],"injection"] = 0.0
+
+    itc_data = pd.DataFrame({"injection":25*np.ones(50),
+                            "heat":np.random.normal(0,1,50)})
+
+
+    # Load spec data
+    e = linkage.experiment.Experiment(expt_data,
+                                    cell_contents={"AT":50e-6,
+                                                    "CT":0.5e-3},
+                                    syringe_contents={"ET":1e-3},
+                                    conc_to_float="AT",
+                                    cell_volume=1800)
+
+    e.define_spectroscopic_observable(obs_column="cd222",
+                                      obs_stdev=0.1,
+                                      obs_microspecies="I",
+                                      obs_macrospecies="AT")
+    e.define_spectroscopic_observable(obs_column="cd240",
+                                      obs_stdev=0.1,
+                                      obs_microspecies=["I","A"],
+                                      obs_macrospecies="AT")
+
+    # Load ITC data
+    f = linkage.experiment.Experiment(itc_data,
+                cell_contents={"CT":0.5e-3},
+                syringe_contents={"ET":1e-3},
+                conc_to_float=None,
+                cell_volume=1800)
+    f.define_itc_observable(obs_column="heat",
+                            obs_stdev=0.1)
+
+    expt_list = [e,f]
+
+    return expt_list
