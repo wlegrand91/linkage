@@ -105,8 +105,6 @@ class SixStateEDTA(BindingModel):
         
         return np.array([I, A, C, E, AC1, AC2, AC3, AC4, EC])
     
-
-
     @property
     def param_names(self):
         return np.array(["KI","KE","K1","K2","K3","K4"])

@@ -49,7 +49,3 @@ class CaEDTA(BindingModel):
     @property
     def micro_species(self):
         return np.array(["C", "E", "EC"])
-    
-    @property
-    def reactants(self):
-        pass

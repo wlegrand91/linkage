@@ -13,7 +13,7 @@ class GlobalModel:
 
     def __init__(self,
                  expt_list,
-                 model_name="SixStateEDTA"):
+                 model_name):
         """
         Initialize a global fit.
         
@@ -291,7 +291,7 @@ class GlobalModel:
         # Record point, observations, and standard deviation
         self._points.append(pt)
         self._y_obs.append(expt_data[obs])
-        self._y_stdev.append(self._points_per_expt[expt_idx])
+        self._y_stdev.append(expt_data[obs_info["stdev_column"]])
 
         # Get mean and stdev of obs for normalization
         obs_mean = self._normalization_params[obs]["mean"]

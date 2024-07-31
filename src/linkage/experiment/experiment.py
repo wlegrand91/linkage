@@ -48,7 +48,6 @@ def _preprocess_df(expt_data):
     if "ignore_point" not in expt_data.columns:
         expt_data["ignore_point"] = np.zeros(len(expt_data),dtype=bool)
 
-
     # If there is no "0" injections start -- like in ITC, for example -- add this with 
     # np.nan for all non-injection values
     if not np.isclose(expt_data.loc[expt_data.index[0],"injection"],0):
@@ -160,6 +159,9 @@ class Experiment:
             w = f"obs_column '{obs_column}' was already adding. Overwriting\n"
             warnings.warn(w)
 
+        # Make sure any missing data is ignored. 
+        set_to_ignore = np.isnan(self._expt_data[obs_column])
+        self._expt_data.loc[set_to_ignore,"ignore_point"] = True
 
         return obs_column, obs_stdev_column
 

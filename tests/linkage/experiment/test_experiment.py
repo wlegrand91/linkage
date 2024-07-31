@@ -199,14 +199,36 @@ def test_Experiment__define_generic_observable():
                 conc_to_float=conc_to_float,
                 constant_volume=constant_volume)
     
-    # add an itc observable
+    # add an itc observable (have to add completely because _define_generic 
+    # does not actually update _observable dict)
     e.define_itc_observable(obs_column="obs",obs_stdev="obs_stdev")
     
     # should now warn because already added obs_column = "obs" to data
     with pytest.warns():
         obs_column, obs_stdev_column = e._define_generic_observable(obs_column="obs",
                                                                     obs_stdev="obs_stdev")
-    
+        
+    # Send in a nan and make sure it is set to be ignored
+    expt_data = pd.DataFrame({"injection":[0,1,1],
+                              "obs":[1,np.nan,3],
+                              "obs_stdev":[0.1,0.2,0.3]})
+    cell_contents = {"A":10}
+    syringe_contents = {"B":10}
+    conc_to_float = None
+    cell_volume = 100
+    constant_volume = False
+
+    e = Experiment(expt_data=expt_data,
+                   cell_contents=cell_contents,
+                   syringe_contents=syringe_contents,
+                   cell_volume=cell_volume,
+                   conc_to_float=conc_to_float,
+                   constant_volume=constant_volume)
+    e._define_generic_observable(obs_column="obs",
+                                 obs_stdev="obs_stdev")
+    assert np.array_equal(e._expt_data["ignore_point"],
+                          [False,True,False])
+
 
 def test_Experiment_define_spectroscopic_observable():
 
