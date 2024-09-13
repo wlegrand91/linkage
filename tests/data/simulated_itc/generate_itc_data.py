@@ -52,9 +52,9 @@ def create_fake_itc_data():
     # Calculate the values for our model. This creates _y_calc 
     y_calc = gm.model(guesses)
 
-    # Hack for the simulation. Set y_obs and y_stdev to y_calc
+    # Hack for the simulation. Set y_obs and y_std to y_calc
     gm._y_obs = y_calc + np.random.normal(0,err,len(y_calc))
-    gm._y_stdev = np.ones(len(gm._y_obs))*err
+    gm._y_std = np.ones(len(gm._y_obs))*err
     
     # Plot results
     fig, ax = plt.subplots(1,figsize=(6,6))

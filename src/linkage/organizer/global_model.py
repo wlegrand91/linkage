@@ -9,6 +9,23 @@ import copy
 
 class GlobalModel:
     """
+    This class brings together a list of experiments and a thermodynamic model
+    and generates an integrated model. This model will have:
+    
+    + equilibrium constants from model
+    + a nuisance concentration parameter for each experiment
+    + enthalpies for each equilibrium (if an ITC experiment is passed in)
+
+    This class also regularizes the signal from experimental types. For example,
+    the heats from across all itc experiments will be transformed by
+    (heat - mean(all_heats))/std(all_heats), where all_heats comes from all 
+    itc experiments loaded. The same transformation will be done to each
+    spectroscopic channel. This puts all experiment types on the same scale when
+    a residual is calculated. 
+
+    The class also weights each observation in each experiment by the number of
+    points in that experiment. This means that an experiment with more points 
+    will have the same weight as an experiment with fewer points. 
     """
 
     def __init__(self,
@@ -99,6 +116,7 @@ class GlobalModel:
             not_in_expt = set(self._bm.macro_species) - set(expt.expt_concs.columns)
             for missing in not_in_expt:
                 expt.add_expt_conc_column(new_column=missing)
+                
 
     def _count_expt_points(self):
         """
@@ -169,18 +187,31 @@ class GlobalModel:
                 self._all_parameter_names.append(f"dH_{s[1:]}")
                 self._parameter_guesses.append(0.0)
 
-            # Heats of dilution
-            for k in self._bm.macro_species:
-                self._all_parameter_names.append(f"nuisance_dil_{k}")
-                self._parameter_guesses.append(0.0)
+            # Heats of dilution. Figure out which species experience large
+            # dilution during the experiment. 
+            to_dilute = []
+            for expt in self._expt_list:
+                if expt.observables[obs]["type"] == "itc":
+                    to_dilute.extend(expt.titrating_macro_species)
+            to_dilute = list(set(to_dilute))
+            
+            dilution_mask = []
+            for s in self._bm.macro_species:
+                if s in to_dilute:
+                    dilution_mask.append(True)
+                    self._all_parameter_names.append(f"nuisance_dil_{s}")
+                    self._parameter_guesses.append(0.0)
+                else:
+                    dilution_mask.append(False)
 
+            self._dilution_mask = np.array(dilution_mask,dtype=bool)
+                    
             # Last enthalpy index is last entry
             self._dh_param_end_idx = len(self._all_parameter_names)  - 1
     
-
     def _process_expt_fudge(self):
 
-        # Fudge parameters will be last parameters in the guess list    
+        # Fudge parameters will be last parameters in the guess array    
         self._fudge_list = []
         for expt_counter, expt in enumerate(self._expt_list):
             
@@ -204,7 +235,7 @@ class GlobalModel:
         etc.) is normalized to all values of that obs type seen across all 
         experiments. So, if there are three itc experiments, we will do a single
         normalization across all three experiments. The normalization is 
-        (value - mean(value))/stdev(value) where the mean and stdev are taken 
+        (value - mean(value))/std(value) where the mean and std are taken 
         over all experimental values with that obs. 
         """
 
@@ -222,24 +253,21 @@ class GlobalModel:
                 obs_values_seen[obs].extend(obs_values)
 
         # Create a normalization_params dictionary that keys obs to the mean and
-        # stdev of that obs. This allows other methods to normalize data on 
+        # std of that obs. This allows other methods to normalize data on 
         # the fly. 
         self._normalization_params = {}
         for obs in obs_values_seen:
-            
-            self._normalization_params[obs] = {}
             
             values = np.array(obs_values_seen[obs])
             values = values[np.logical_not(np.isnan(values))]
             if len(values) == 0:
                 mean_value = 0
-                stdev_value = 1
+                std_value = 1
             else:
                 mean_value = np.mean(values)
-                stdev_value = np.std(values)
+                std_value = np.std(values)
             
-            self._normalization_params[obs]["mean"] = mean_value
-            self._normalization_params[obs]["stdev"] = stdev_value
+            self._normalization_params[obs] = [mean_value,std_value]
 
 
     def _add_point(self,point_idx,expt_idx,obs):
@@ -277,11 +305,13 @@ class GlobalModel:
                           micro_array=self._micro_arrays[-1],
                           macro_array=self._macro_arrays[-1],
                           del_macro_array=self._del_macro_arrays[-1],
+                          dilution_mask=self._dilution_mask,
                           meas_vol_dilution=meas_vol_dilution,
                           dh_param_start_idx=self._dh_param_start_idx,
                           dh_param_end_idx=self._dh_param_end_idx + 1,
                           dh_sign=self._dh_sign,
-                          dh_product_mask=self._dh_product_mask)
+                          dh_product_mask=self._dh_product_mask,
+                          injection_volume=float(expt_data["injection"])*1e-6)
 
         else:
             obs_type = obs_info["type"]
@@ -291,17 +321,17 @@ class GlobalModel:
         # Record point, observations, and standard deviation
         self._points.append(pt)
         self._y_obs.append(expt_data[obs])
-        self._y_stdev.append(expt_data[obs_info["stdev_column"]])
+        self._y_std.append(expt_data[obs_info["std_column"]])
 
-        # Get mean and stdev of obs for normalization
-        obs_mean = self._normalization_params[obs]["mean"]
-        obs_stdev = self._normalization_params[obs]["stdev"]
+        # Get mean and std of obs for normalization
+        obs_mean = self._normalization_params[obs][0]
+        obs_std = self._normalization_params[obs][1]
 
         # Record point normalization
         self._y_norm_mean.append(obs_mean)
-        self._y_norm_stdev.append(obs_stdev)
-        self._y_obs_normalized.append((expt_data[obs] - obs_mean)/obs_stdev)
-        self._y_stdev_normalized.append(self._y_stdev[-1]/obs_stdev)
+        self._y_norm_std.append(obs_std)
+        self._y_obs_normalized.append((expt_data[obs] - obs_mean)/obs_std)
+        self._y_std_normalized.append(self._y_std[-1]/obs_std)
 
 
     def _build_point_map(self):
@@ -317,14 +347,14 @@ class GlobalModel:
 
         # Observed values
         self._y_obs = []
-        self._y_stdev = []
+        self._y_std = []
 
         # Normalized observed values (and how to do it)
         self._y_obs_normalized = []
-        self._y_stdev_normalized = []
+        self._y_std_normalized = []
 
         self._y_norm_mean = []
-        self._y_norm_stdev = []
+        self._y_norm_std = []
         
         for expt_counter, expt in enumerate(self._expt_list):
 
@@ -358,30 +388,26 @@ class GlobalModel:
                 # Go through each experimental point
                 for i in range(len(expt.expt_data)):
 
-                    # And try to add it
+                    # Add that point to the lsit of all points
                     self._add_point(point_idx=i,
                                     expt_idx=expt_counter,
                                     obs=obs)
-                    
+            
         # Convert lists populated above into numpy arrays
         self._y_obs = np.array(self._y_obs)
-        self._y_stdev = np.array(self._y_stdev)
+        self._y_std = np.array(self._y_std)
 
         self._y_norm_mean = np.array(self._y_norm_mean)
-        self._y_norm_stdev = np.array(self._y_norm_stdev)
+        self._y_norm_std = np.array(self._y_norm_std)
         
         self._y_obs_normalized = np.array(self._y_obs_normalized)
-        self._y_stdev_normalized = np.array(self._y_stdev_normalized)
-
-        # Create calc arrays that are all nan at this point
-        self._y_calc = np.ones(len(self._y_obs),dtype=float)*np.nan
-        self._y_calc_normalized = np.ones(len(self._y_obs),dtype=float)*np.nan
+        self._y_std_normalized = np.array(self._y_std_normalized)
     
     def model_normalized(self,guesses):
         """
         Model where each experiment is normalized to its mean and standard 
         deviation. Should be regressed against self.y_obs_normalized and 
-        self.y_stdev_normalized, *not* self.y_obs and self.y_stdev. 
+        self.y_std_normalized, *not* self.y_obs and self.y_std. 
 
         When this method is run, self.y_calc will be updated properly, 
         allowing self.y_calc and self.y_obs to be directly compared, even after
@@ -392,14 +418,21 @@ class GlobalModel:
         y_calc = self.model(guesses)
 
         # Now normalize y_calc_norm
-        self._y_calc_norm = (y_calc - self._y_norm_mean)/self._y_norm_stdev
+        y_calc_norm = (y_calc - self._y_norm_mean)/self._y_norm_std
 
         # Return
-        return self._y_calc_norm
+        return y_calc_norm
 
     def model(self,guesses):
         """
         """
+
+        # Work on copy of guesses because we're going to edit 
+        guesses = guesses.copy()
+
+        # Grab binding parameters from guesses. 
+        start = self._bm_param_start_idx
+        end = self._bm_param_end_idx+1
     
         # For each block of macro species
         for i in range(len(self._macro_arrays)):
@@ -412,40 +445,32 @@ class GlobalModel:
                 fudge_species_index = 0
                 fudge_value = 1.0
 
-            # For each macro concentration in this experiment
+            # For each titration step in this experiment (row of concs in 
+            # marco_arrays[i])
             for j in range(len(self._macro_arrays[i])):
 
-                # Build a vector with macro concentrations, possibly with one 
-                # fudged
-                this_macro_array = self._macro_arrays[i][j,:]
+                # Build a vector with macro concentrations for this titration
+                # step, possibly with one fudged
+                this_macro_array = self._macro_arrays[i][j,:].copy()
                 this_macro_array[fudge_species_index] *= fudge_value
 
-                # Grab binding parameters from guesses. 
-                this_param_array = np.float_power(10,guesses[self._bm_param_start_idx:self._bm_param_end_idx+1])
-
                 # Update microscopic species concentrations
-                self._micro_arrays[i][j,:] = self._bm.get_concs(param_array=this_param_array,
+                self._micro_arrays[i][j,:] = self._bm.get_concs(param_array=guesses[start:end],
                                                                 macro_array=this_macro_array)
 
             # Update del_macro_array
             this_macro_array = self._macro_arrays[i].copy()
             this_macro_array[fudge_species_index] *= fudge_value
-            self._del_macro_arrays[i] = self._expt_syringe_concs[i] - this_macro_array
+            self._del_macro_arrays[i] = this_macro_array - self._expt_syringe_concs[i] 
 
         # For each point, calculate the observable given the estimated microscopic
         # and macroscopic concentrations
+        y_calc = np.ones(len(self._points))*np.nan
         for i in range(len(self._points)):
-            self._y_calc[i] = self._points[i].calc_value(guesses)
-        
-        return self._y_calc
+            y_calc[i] = self._points[i].calc_value(guesses)
 
-    @property
-    def y_calc(self):
-        """
-        Vector of calculated values.
-        """
-        return self._y_calc
-    
+        return y_calc
+
     @property
     def y_obs(self):
         """
@@ -454,36 +479,28 @@ class GlobalModel:
         return self._y_obs
 
     @property
-    def y_stdev(self):
+    def y_std(self):
         """
         Vector of standard deviations of observed values.
         """
-        return self._y_stdev
-
-    @property
-    def y_calc_normalized(self):
-        """
-        Vector of calculated values where each experiment is normalized by
-        (obs - mean(obs))/stdev(obs). Pairs with y_obs_normalized.
-        """
-        return self._y_calc_normalized
+        return self._y_std
 
     @property
     def y_obs_normalized(self):
         """
         Vector of observed values where each experiment is normalized by
-        (obs - mean(obs))/stdev(obs). Pairs with y_calc_normalized and 
-        y_stdev_normalized.
+        (obs - mean(obs))/std(obs). Pairs with y_calc_normalized and 
+        y_std_normalized.
         """
         return self._y_obs_normalized
     
     @property
-    def y_stdev_normalized(self):
+    def y_std_normalized(self):
         """
         Vector of standard deviations of observed values normalized by 
-        (obs - mean(obs))/stdev(obs). Pairs with y_obs_normalized. 
+        (obs - mean(obs))/std(obs). Pairs with y_obs_normalized. 
         """
-        return self._y_stdev_normalized
+        return self._y_std_normalized
 
     @property
     def parameter_names(self):
@@ -562,8 +579,7 @@ class GlobalModel:
                 out[k].append(p._micro_array[p._idx,i])
             
         out["y_obs"] = self.y_obs
-        out["y_calc"] = self.y_calc
-        out["y_stdev"] = self.y_stdev
+        out["y_std"] = self.y_std
 
         return pd.DataFrame(out)
 

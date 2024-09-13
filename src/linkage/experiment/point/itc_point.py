@@ -16,11 +16,13 @@ class ITCPoint(ExperimentalPoint):
                  micro_array,
                  macro_array,
                  del_macro_array,
+                 dilution_mask,
                  meas_vol_dilution,
                  dh_param_start_idx,
                  dh_param_end_idx,
                  dh_sign,
-                 dh_product_mask):
+                 dh_product_mask,
+                 injection_volume):
         """
         Initialize an ITC data point. 
         
@@ -41,6 +43,9 @@ class ITCPoint(ExperimentalPoint):
         del_macro_array : np.ndarray (float)
             array holding change in concentrations of all macroscopic species 
             from the syringe to this condition
+        dilution_mask : np.ndarray (bool)
+            mask indicating which macro species have a dilution heat associated
+            with them. 
         meas_vol_dilution : float
             how much this shot diluted the measurement volume of the cell. This
             is calculated using the "titrator" function and corresponds to 
@@ -55,6 +60,8 @@ class ITCPoint(ExperimentalPoint):
         dh_product_mask : list-like
             list of boolean masks for pulling out products when calcuating 
             enthalpy changes
+        injection_volume : float
+            injection volume in L
         """
         
         super().__init__(idx=idx,
@@ -64,6 +71,7 @@ class ITCPoint(ExperimentalPoint):
                          macro_array=macro_array,
                          del_macro_array=del_macro_array)
         
+        self._dilution_mask = dilution_mask
         self._meas_vol_dilution = meas_vol_dilution
         self._dh_param_start_idx = dh_param_start_idx
         self._dh_param_end_idx = dh_param_end_idx
@@ -76,6 +84,8 @@ class ITCPoint(ExperimentalPoint):
         self._dh_last = self._dh_first + len(self._dh_sign) 
         self._dil_first = self._dh_last
         self._dil_last = self._dh_param_end_idx
+
+        self._injection_volume = injection_volume
         
     def calc_value(self,parameters,*args,**kwargs):
         """
@@ -114,6 +124,6 @@ class ITCPoint(ExperimentalPoint):
 
         # # Dilution correction        
         dil_array = parameters[self._dil_first:self._dil_last]
-        total_heat += np.sum(dil_array*self._del_macro_array[self._idx,:])
+        total_heat += np.sum(dil_array*self._del_macro_array[self._idx,self._dilution_mask])*self._injection_volume
 
         return total_heat

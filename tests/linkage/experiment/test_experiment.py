@@ -127,7 +127,7 @@ def test_Experiment():
     assert e.conc_to_float is e._conc_to_float
     assert e.syringe_contents is e._syringe_contents
     assert e.initial_cell_contents is e._initial_cell_contents
-
+    assert np.array_equal(e.titrating_macro_species,["B"])
     assert np.array_equal(e._expt_concs["volume"],[100,101,102])
 
     e = Experiment(expt_data=expt_data,
@@ -147,12 +147,38 @@ def test_Experiment():
                     conc_to_float="NOT_THERE",
                     cell_volume=cell_volume,
                     constant_volume=True)
+        
+    # make sure we recognize that only B titrates even if we have "A" in the
+    # cell and titrant. 
+    expt_data = pd.DataFrame({"injection":[0,1,1]})
+    cell_contents = {"A":10}
+    syringe_contents = {"A":10,"B":10}
+    conc_to_float = None
+    cell_volume = 100
+    constant_volume = False
+
+    e = Experiment(expt_data=expt_data,
+                   cell_contents=cell_contents,
+                   syringe_contents=syringe_contents,
+                   conc_to_float=conc_to_float,
+                   cell_volume=cell_volume,
+                   constant_volume=constant_volume)
+
+    assert e.expt_data is e._expt_data
+    assert e.expt_concs is e._expt_concs
+    assert e.observables is e._observables
+    assert e.conc_to_float is e._conc_to_float
+    assert e.syringe_contents is e._syringe_contents
+    assert e.initial_cell_contents is e._initial_cell_contents
+    assert np.array_equal(e.titrating_macro_species,["B"])
+    assert np.array_equal(e._expt_concs["volume"],[100,101,102])
+
 
 def test_Experiment__define_generic_observable():
 
     expt_data = pd.DataFrame({"injection":[0,1,1],
                               "obs":[1,2,3],
-                              "obs_stdev":[0.1,0.2,0.3]})
+                              "obs_std":[0.1,0.2,0.3]})
     cell_contents = {"A":10}
     syringe_contents = {"B":10}
     conc_to_float = None
@@ -166,30 +192,30 @@ def test_Experiment__define_generic_observable():
                    conc_to_float=conc_to_float,
                    constant_volume=constant_volume)
     
-    obs_column, obs_stdev_column = e._define_generic_observable(obs_column="obs",
-                                                                obs_stdev="obs_stdev")
+    obs_column, obs_std_column = e._define_generic_observable(obs_column="obs",
+                                                                obs_std="obs_std")
     assert obs_column == "obs"
-    assert obs_stdev_column == "obs_stdev"
+    assert obs_std_column == "obs_std"
 
     with pytest.raises(ValueError):
         e._define_generic_observable(obs_column="not_a_column",
-                                     obs_stdev="obs_stdev")
+                                     obs_std="obs_std")
         
     with pytest.raises(ValueError):
         e._define_generic_observable(obs_column="injection",
-                                     obs_stdev="obs_stdev")
+                                     obs_std="obs_std")
         
     with pytest.raises(ValueError):
         e._define_generic_observable(obs_column="obs",
-                                     obs_stdev="not_a_column")
+                                     obs_std="not_a_column")
 
-    assert np.array_equal(e._expt_data["obs_stdev"],[0.1,0.2,0.3])
-    obs_column, obs_stdev_column = e._define_generic_observable(obs_column="obs",
-                                                                obs_stdev=1.5)
+    assert np.array_equal(e._expt_data["obs_std"],[0.1,0.2,0.3])
+    obs_column, obs_std_column = e._define_generic_observable(obs_column="obs",
+                                                                obs_std=1.5)
 
     assert obs_column == "obs"
-    assert obs_stdev_column == "obs_stdev"
-    assert np.array_equal(e._expt_data["obs_stdev"],[1.5,1.5,1.5])
+    assert obs_std_column == "obs_std"
+    assert np.array_equal(e._expt_data["obs_std"],[1.5,1.5,1.5])
 
     # add twice, which should throw a warning
     e = Experiment(expt_data=expt_data,
@@ -201,17 +227,17 @@ def test_Experiment__define_generic_observable():
     
     # add an itc observable (have to add completely because _define_generic 
     # does not actually update _observable dict)
-    e.define_itc_observable(obs_column="obs",obs_stdev="obs_stdev")
+    e.define_itc_observable(obs_column="obs",obs_std="obs_std")
     
     # should now warn because already added obs_column = "obs" to data
     with pytest.warns():
-        obs_column, obs_stdev_column = e._define_generic_observable(obs_column="obs",
-                                                                    obs_stdev="obs_stdev")
+        obs_column, obs_std_column = e._define_generic_observable(obs_column="obs",
+                                                                    obs_std="obs_std")
         
     # Send in a nan and make sure it is set to be ignored
     expt_data = pd.DataFrame({"injection":[0,1,1],
                               "obs":[1,np.nan,3],
-                              "obs_stdev":[0.1,0.2,0.3]})
+                              "obs_std":[0.1,0.2,0.3]})
     cell_contents = {"A":10}
     syringe_contents = {"B":10}
     conc_to_float = None
@@ -225,7 +251,7 @@ def test_Experiment__define_generic_observable():
                    conc_to_float=conc_to_float,
                    constant_volume=constant_volume)
     e._define_generic_observable(obs_column="obs",
-                                 obs_stdev="obs_stdev")
+                                 obs_std="obs_std")
     assert np.array_equal(e._expt_data["ignore_point"],
                           [False,True,False])
 
@@ -234,7 +260,7 @@ def test_Experiment_define_spectroscopic_observable():
 
     expt_data = pd.DataFrame({"injection":[0,1,1],
                               "obs":[1,2,3],
-                              "obs_stdev":[0.1,0.2,0.3]})
+                              "obs_std":[0.1,0.2,0.3]})
     cell_contents = {"A":10}
     syringe_contents = {"B":10}
     conc_to_float = None
@@ -249,7 +275,7 @@ def test_Experiment_define_spectroscopic_observable():
                    constant_volume=constant_volume)
     
     e.define_spectroscopic_observable(obs_column="obs",
-                                      obs_stdev="obs_stdev",
+                                      obs_std="obs_std",
                                       obs_microspecies=["anything"],
                                       obs_macrospecies="A")
     assert e._observables["obs"]["type"] == "spec"
@@ -266,23 +292,23 @@ def test_Experiment_define_spectroscopic_observable():
     # Bad observable column
     with pytest.raises(ValueError):
         e.define_spectroscopic_observable(obs_column="not_a_column",
-                                        obs_stdev="obs_stdev",
+                                        obs_std="obs_std",
                                         obs_microspecies=["anything"],
                                         obs_macrospecies="A")
         
-    # Bad obs_stdev column
+    # Bad obs_std column
     with pytest.raises(ValueError):
         e.define_spectroscopic_observable(obs_column="obs",
-                                        obs_stdev="not_a_column",
+                                        obs_std="not_a_column",
                                         obs_microspecies=["anything"],
                                         obs_macrospecies="A")
         
-    # good obs_stdev, but as float
+    # good obs_std, but as float
     e.define_spectroscopic_observable(obs_column="obs",
-                                      obs_stdev=1.5,
+                                      obs_std=1.5,
                                       obs_microspecies=["anything"],
                                       obs_macrospecies="A")
-    assert np.array_equal(e._expt_data["obs_stdev"],[1.5,1.5,1.5])
+    assert np.array_equal(e._expt_data["obs_std"],[1.5,1.5,1.5])
 
 
     e = Experiment(expt_data=expt_data,
@@ -295,13 +321,13 @@ def test_Experiment_define_spectroscopic_observable():
     # Bad obs_macrospecies column
     with pytest.raises(ValueError):
         e.define_spectroscopic_observable(obs_column="obs",
-                                        obs_stdev="obs_stdev",
+                                        obs_std="obs_std",
                                         obs_microspecies=["anything"],
                                         obs_macrospecies="not_in_cell_or_syringe")
                 
     # obs_microspecies as a single value
     e.define_spectroscopic_observable(obs_column="obs",
-                                      obs_stdev=1.5,
+                                      obs_std=1.5,
                                       obs_microspecies="anything",
                                       obs_macrospecies="A")
     assert np.array_equal(e._observables["obs"]["microspecies"],["anything"])
@@ -314,7 +340,7 @@ def test_Experiment_define_spectroscopic_observable():
                    cell_volume=cell_volume,
                    constant_volume=constant_volume)
     e.define_spectroscopic_observable(obs_column="obs",
-                                      obs_stdev=1.5,
+                                      obs_std=1.5,
                                       obs_microspecies=["anything","else"],
                                       obs_macrospecies="A")
     assert np.array_equal(e._observables["obs"]["microspecies"],["anything","else"])
@@ -329,7 +355,7 @@ def test_Experiment_define_spectroscopic_observable():
                    constant_volume=constant_volume)
     with pytest.raises(ValueError):
         e.define_spectroscopic_observable(obs_column="obs",
-                                          obs_stdev="obs_stdev",
+                                          obs_std="obs_std",
                                           obs_microspecies=1.5,
                                           obs_macrospecies="A")
 
@@ -338,7 +364,7 @@ def test_Experiment_define_itc_observable():
 
     expt_data = pd.DataFrame({"injection":[0,1,1],
                               "obs":[1,2,3],
-                              "obs_stdev":[0.1,0.2,0.3]})
+                              "obs_std":[0.1,0.2,0.3]})
     cell_contents = {"A":10}
     syringe_contents = {"B":10}
     conc_to_float = None
@@ -355,11 +381,11 @@ def test_Experiment_define_itc_observable():
                    constant_volume=constant_volume)
     
     e.define_itc_observable(obs_column="obs",
-                            obs_stdev="obs_stdev")
+                            obs_std="obs_std")
     
     assert len(e._observables["obs"]) == 2
     assert e._observables["obs"]["type"] == "itc"
-    assert e._observables["obs"]["stdev_column"] == "obs_stdev"
+    assert e._observables["obs"]["std_column"] == "obs_std"
     
 
 def test_add_expt_column():

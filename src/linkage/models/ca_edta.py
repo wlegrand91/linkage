@@ -15,18 +15,18 @@ class CaEDTA(BindingModel):
     
     def get_concs(self,param_array,macro_array):
 
-        KE = param_array[0]
+        KE = np.exp(param_array[0])
         CT, ET = macro_array
 
         if CT == 0 or ET == 0:
             return np.array([CT,ET,0.0],dtype=float)
 
         # Simple quadratic
-        # a = 1
+        a = 1
         b = -(CT + ET + 1/KE)
         c = ET*CT
-        s = np.sqrt(b**2 - 4*c)
-        roots = np.array([(-b + s)/2, (-b - s)/2])
+        s = np.sqrt(b**2 - 4*a*c)
+        roots = np.array([(-b + s)/(2*a), (-b - s)/(2*a)])
 
         # EC is the real root between 0->ET and 0->CT
         EC = self._get_real_root(roots=roots,

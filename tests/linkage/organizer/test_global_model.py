@@ -160,9 +160,11 @@ def test_GlobalModel__calc_expt_normalization(fake_spec_and_itc_data):
                      expt_list=this_expt_list)
     
     assert len(gf._normalization_params) == 3
-    assert np.array_equal(list(gf._normalization_params["cd222"]),["mean","stdev"])
-    assert np.array_equal(list(gf._normalization_params["cd240"]),["mean","stdev"])
-    assert np.array_equal(list(gf._normalization_params["heat"]),["mean","stdev"])
+
+
+    assert len(gf._normalization_params["cd222"]) == 2
+    assert len(gf._normalization_params["cd240"]) == 2
+    assert len(gf._normalization_params["heat"]) == 2
 
     # Make sure calculated values are correct when we dump in specific values 
     this_expt_list = copy.deepcopy(base_expt_list)
@@ -175,19 +177,19 @@ def test_GlobalModel__calc_expt_normalization(fake_spec_and_itc_data):
                      expt_list=this_expt_list)
     
     # Should be 1 and 0. All values were 1. 
-    assert np.isclose(gf._normalization_params["cd222"]["mean"],0.98)
-    assert np.isclose(gf._normalization_params["cd222"]["stdev"],0.13999999999)
+    assert np.isclose(gf._normalization_params["cd222"][0],0.98)
+    assert np.isclose(gf._normalization_params["cd222"][1],0.13999999999)
 
     # There is a small chance this fails numerically if the random choice above
     # was super extreme.
-    assert gf._normalization_params["cd240"]["mean"] > 1
-    assert gf._normalization_params["cd240"]["mean"] < 2
-    assert gf._normalization_params["cd240"]["stdev"] > 0.2
-    assert gf._normalization_params["cd240"]["stdev"] < 0.8
+    assert gf._normalization_params["cd240"][0] > 1
+    assert gf._normalization_params["cd240"][0] < 2
+    assert gf._normalization_params["cd240"][1] > 0.2
+    assert gf._normalization_params["cd240"][1] < 0.8
 
     # These will be 0 and 1 if all values were nan
-    assert gf._normalization_params["heat"]["mean"] == 0
-    assert gf._normalization_params["heat"]["stdev"] == 1
+    assert gf._normalization_params["heat"][0] == 0
+    assert gf._normalization_params["heat"][1] == 1
     
     # Make sure it is normalizing correctly between experiments with shared
     # observables. 
@@ -200,8 +202,8 @@ def test_GlobalModel__calc_expt_normalization(fake_spec_and_itc_data):
                      expt_list=this_expt_list)
     
     # Should be 1 and 0. All values were 1. 
-    assert np.isclose(gf._normalization_params["cd222"]["mean"],1.5)
-    assert np.isclose(gf._normalization_params["cd222"]["stdev"],0.5)
+    assert np.isclose(gf._normalization_params["cd222"][0],1.5)
+    assert np.isclose(gf._normalization_params["cd222"][1],0.5)
 
 def test_GlobalModel__add_point():
 
@@ -252,18 +254,17 @@ def test_GlobalModel__build_point_map(fake_spec_and_itc_data):
 
     assert num_points == len(gf._points)
 
-    # Test y_obs, y_stdev, y_calc
+    # Test y_obs, y_std, y_calc
     assert num_points == len(gf._y_obs)
-    assert num_points == len(gf._y_stdev)
-    assert num_points == len(gf._y_calc)
+    assert num_points == len(gf._y_std)
 
-    # Test y_obs_normalized, y_stdev_normalized
+    # Test y_obs_normalized, y_std_normalized
     assert num_points == len(gf._y_obs_normalized)
-    assert num_points == len(gf._y_stdev_normalized)
+    assert num_points == len(gf._y_std_normalized)
     
     # Test y_norm_mean and y_norm_stdev
     assert num_points == len(gf._y_norm_mean)
-    assert num_points == len(gf._y_norm_stdev)
+    assert num_points == len(gf._y_norm_std)
     
     this_expt_list = copy.deepcopy(base_expt_list)
     this_expt_list[0].observables["cd222"]["type"] = "not_really"

@@ -33,15 +33,16 @@ def test_titrator():
 
 def test_sync_cell_and_syringe():
 
-    cell = {"A":1,"B":2}
+    cell = {"A":10,"B":2}
     syringe = {"A":10,"C":20}
 
-    species, cell, syringe = sync_cell_and_syringe(cell_contents=cell,
-                                                   syringe_contents=syringe)
+    species, titr, cell, syringe = sync_cell_and_syringe(cell_contents=cell,
+                                                         syringe_contents=syringe)
     
     assert np.array_equal(species,["A","B","C"])
+    assert np.array_equal(titr,["C"])
 
-    assert cell["A"] == 1
+    assert cell["A"] == 10
     assert cell["B"] == 2
     assert cell["C"] == 0
 
@@ -50,12 +51,12 @@ def test_sync_cell_and_syringe():
     assert syringe["C"] == 20
 
     with pytest.raises(ValueError):
-        species, cell, syringe = sync_cell_and_syringe(cell_contents=1,
-                                                       syringe_contents=syringe)
+        species, titr, cell, syringe = sync_cell_and_syringe(cell_contents=1,
+                                                             syringe_contents=syringe)
         
     with pytest.raises(ValueError):
-        species, cell, syringe = sync_cell_and_syringe(cell_contents=cell,
-                                                       syringe_contents=-1)
+        species, titr, cell, syringe = sync_cell_and_syringe(cell_contents=cell,
+                                                             syringe_contents=-1)
         
 
 def test__titr_constant_volume():
