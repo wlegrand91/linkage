@@ -102,6 +102,8 @@ class ITCPoint(ExperimentalPoint):
         dh_array = parameters[self._dh_first:self._dh_last]
         
         total_heat = 0.0
+        
+        # Get conc changes for each equilibrium. 
         for i in range(len(self._dh_product_mask)):
 
             # Concentration of relevant microspecies before the injection 
@@ -110,8 +112,9 @@ class ITCPoint(ExperimentalPoint):
             # Concentration of relevant microspecies after the injection
             C_after  = self._micro_array[self._idx,self._dh_product_mask[i]]
             
-            # Concentration change in the cell itself (observable part) 
-            # depends on dilution factor. 
+            # Concentration change in the cell itself. Scale the down the 
+            # concentration before to account for the dilution effect of the 
+            # shot.
             del_C = C_after - C_before*self._meas_vol_dilution
 
             # Treat concentration change as the *mean* of all species in 
@@ -122,7 +125,7 @@ class ITCPoint(ExperimentalPoint):
 
             total_heat += dh_array[i]*self._dh_sign[i]*dC
 
-        # # Dilution correction        
+        # Dilution correction        
         dil_array = parameters[self._dil_first:self._dil_last]
         total_heat += np.sum(dil_array*self._del_macro_array[self._idx,self._dilution_mask])*self._injection_volume
 

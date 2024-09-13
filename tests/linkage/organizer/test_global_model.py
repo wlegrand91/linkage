@@ -4,8 +4,8 @@ import pytest
 
 import linkage
 from linkage.organizer.global_model import GlobalModel
-from linkage.experiment.point.spec_point import SpecPoint
-from linkage.experiment.point.itc_point import ITCPoint
+from linkage.organizer.point.spec_point import SpecPoint
+from linkage.organizer.point.itc_point import ITCPoint
 
 from linkage.experiment.experiment import Experiment
 

@@ -1,6 +1,6 @@
 import linkage.models
-from linkage.experiment.point.spec_point import SpecPoint
-from linkage.experiment.point.itc_point import ITCPoint
+from linkage.organizer.point.spec_point import SpecPoint
+from linkage.organizer.point.itc_point import ITCPoint
 
 import numpy as np
 import pandas as pd
@@ -13,19 +13,23 @@ class GlobalModel:
     and generates an integrated model. This model will have:
     
     + equilibrium constants from model
-    + a nuisance concentration parameter for each experiment
-    + enthalpies for each equilibrium (if an ITC experiment is passed in)
+    + a nuisance concentration parameter for each experiment (if requested)
+    + enthalpies for each equilibrium and heats of dilution (if at least one ITC
+      experiment is passed in)
 
-    This class also regularizes the signal from experimental types. For example,
-    the heats from across all itc experiments will be transformed by
-    (heat - mean(all_heats))/std(all_heats), where all_heats comes from all 
-    itc experiments loaded. The same transformation will be done to each
-    spectroscopic channel. This puts all experiment types on the same scale when
-    a residual is calculated. 
+    This class also:
+    
+    + Regularizes the signal from experimental types. For example,
+      the heats from across all itc experiments will be transformed by
+      (heat - mean(all_heats))/std(all_heats), where all_heats comes from all 
+      itc experiments loaded. The same transformation will be done to each
+      spectroscopic channel. This puts all experiment types on the same scale
+      when a residual is calculated. 
 
-    The class also weights each observation in each experiment by the number of
-    points in that experiment. This means that an experiment with more points 
-    will have the same weight as an experiment with fewer points. 
+    + Weights each observation in each experiment by the number of
+      points in that experiment. This means that an experiment with more points 
+      will have the same weight overall contribution to the regression as an
+      experiment with fewer points. 
     """
 
     def __init__(self,
@@ -45,28 +49,19 @@ class GlobalModel:
         # Store model name and experiment list
         self._model_name = model_name
         self._expt_list = copy.deepcopy(expt_list)
-
-        # Indexes for slicing out binding model
-        self._bm_param_start_idx = None
-        self._bm_param_end_idx = None
-
-        # Indexes for slicing out and processing
-        self._dh_param_start_idx = None
-        self._dh_param_end_idx = None
-        self._dh_sign = None
-        self._dh_product_mask = None
-
-        # list of all parameter names in the same order as guesses
-        self._all_parameter_names = []
-        self._parameter_guesses = []
-        
-        # Initialize class
+    
+        # Load the model
         self._load_model()
-        self._sync_model_and_expt()
-        self._count_expt_points()
+
+        # Load experimental data. The final output of this 
+        self._get_expt_std_scalar()
+        self._get_expt_normalization()
+        self._load_observables()
+
         self._get_enthalpy_param()
-        self._process_expt_fudge()
-        self._calc_expt_normalization()
+        self._get_expt_fudge()
+        
+        # Create points that allow calculation of observations
         self._build_point_map()
 
     def _load_model(self):
@@ -94,155 +89,60 @@ class GlobalModel:
         # Initialize binding model
         self._bm = available_models[self._model_name]()
 
-        # First binding model parameter index is 0
-        self._bm_param_start_idx = 0
-        
         # Record names of the model parameters
+        self._all_parameter_names = []
+        self._parameter_guesses = []
         for p in self._bm.param_names:
             self._all_parameter_names.append(p)
             self._parameter_guesses.append(0.0)
 
-        # Last binding model parameter index is last value
+        # Record indexes spanning parameter guesses
+        self._bm_param_start_idx = 0
         self._bm_param_end_idx = len(self._all_parameter_names) - 1
             
-    def _sync_model_and_expt(self):
+    def _get_expt_std_scalar(self):
         """
-        Make sure that all experiments have concentrations for all macrospecies
-        used by the model. If an experiment is missing a macro species, set the
-        concentration of that macrospecies to 0.0 over the whole experiment. 
-        """
-        
-        for expt in self._expt_list:
-            not_in_expt = set(self._bm.macro_species) - set(expt.expt_concs.columns)
-            for missing in not_in_expt:
-                expt.add_expt_conc_column(new_column=missing)
-                
+        Second, we normalize each experiment to the number of points in that 
+        experiment. The normalization is: 
 
-    def _count_expt_points(self):
-        """
-        Count the number of data points for a given experiment.
+            theta = num_obs/sum(num_obs)
+            y_std = y_std*(1 - theta + np.max(theta))
         """
         
-        # Count all points for each experiment 
-        self._points_per_expt = []
+        # Number of points contributed by each experiment
+        points_per_expt = []
         for expt in self._expt_list:
+
+            # Count the total number of points contributed by this experiment
+            # num_observables times number of not-ignored points
             num_obs = len(expt.observables)
             num_not_ignore = np.sum(np.logical_not(expt.expt_data["ignore_point"]))
-            self._points_per_expt.append(num_obs*num_not_ignore)
+            points_per_expt.append(num_obs*num_not_ignore)
 
-    def _get_enthalpy_param(self):
-        """
-        Decide if we need to include enthalpies to fit ITC data.
-        """
+        # Scale y_std for each experiment by this value. It will be 1 for the 
+        # experiment with the smallest number of points and will increase  
+        # for experiments with more points. 
+        points_per_expt = np.array(points_per_expt)
+        theta = points_per_expt/np.sum(points_per_expt)
+        self._expt_std_scalar = 1 - theta + np.max(theta)
 
-        # Look for an ITC experiment
-        need_enthalpies = False
-        for expt in self._expt_list:
-            for obs in expt.observables:    
-                if expt.observables[obs]["type"] == "itc":
-                    need_enthalpies = True
-                    break
-
-        # If we need enthalpies
-        if need_enthalpies:
-            
-            # Index of first enthalpy
-            self._dh_param_start_idx = len(self._all_parameter_names)
-            
-            # Enthalpy change over a titration step is determined by change in
-            # the concentration of microscopic species from the equilibrium. 
-            # Ideally, there is a single species on one side of the reaction, 
-            # so we can simply measure the change in the concentration of that
-            # species. This block of code figures out which side of the 
-            # equilibrium has fewer species and declares that the "product" for
-            # accounting purposes. dh_sign records whether this is the right
-            # side of the reaction (forward) with +1 or the left side of the 
-            # reaction (backward) with -1. By applying dh_sign, the final 
-            # enthalpy is always correct relative to the reaction definition. 
-            self._dh_sign = []
-            self._dh_product_mask = []
-            
-            # For each equilibrium
-            for k in self._bm.equilibria:
-
-                # Get products and reactants of this equilibrium
-                reactants = self._bm.equilibria[k][0]
-                products = self._bm.equilibria[k][1]
-
-                # Figure out if products or reactants side has fewer species
-                if len(products) <= len(reactants):
-                    self._dh_sign.append(1.0)
-                    key_species = products[:]
-                else:
-                    self._dh_sign.append(-1.0)
-                    key_species = reactants[:]
-
-                # Create a mask that lets us grab the species we need to track 
-                # from the _micro_array array. 
-                self._dh_product_mask.append(np.isin(self._bm.micro_species,
-                                                     key_species))
-
-            # Names for all enthalpies
-            for s in self._bm.param_names:
-                self._all_parameter_names.append(f"dH_{s[1:]}")
-                self._parameter_guesses.append(0.0)
-
-            # Heats of dilution. Figure out which species experience large
-            # dilution during the experiment. 
-            to_dilute = []
-            for expt in self._expt_list:
-                if expt.observables[obs]["type"] == "itc":
-                    to_dilute.extend(expt.titrating_macro_species)
-            to_dilute = list(set(to_dilute))
-            
-            dilution_mask = []
-            for s in self._bm.macro_species:
-                if s in to_dilute:
-                    dilution_mask.append(True)
-                    self._all_parameter_names.append(f"nuisance_dil_{s}")
-                    self._parameter_guesses.append(0.0)
-                else:
-                    dilution_mask.append(False)
-
-            self._dilution_mask = np.array(dilution_mask,dtype=bool)
-                    
-            # Last enthalpy index is last entry
-            self._dh_param_end_idx = len(self._all_parameter_names)  - 1
     
-    def _process_expt_fudge(self):
-
-        # Fudge parameters will be last parameters in the guess array    
-        self._fudge_list = []
-        for expt_counter, expt in enumerate(self._expt_list):
-            
-            if expt.conc_to_float:
-
-                param_name = f"nuisance_expt_{expt_counter}_{expt.conc_to_float}_fudge"
-                self._all_parameter_names.append(param_name)
-                self._parameter_guesses.append(1.0)
-                
-                fudge_species_index = np.where(self._bm.macro_species == expt.conc_to_float)[0][0]
-                fudge_value_index = len(self._all_parameter_names) - 1
-                
-                self._fudge_list.append((fudge_species_index,fudge_value_index))
-                        
-            else:
-                self._fudge_list.append(None)
-    
-    def _calc_expt_normalization(self):
+    def _get_expt_normalization(self):
         """
-        Figure out how to normalize. Each unique 'obs' seen (e.g. heat, cd222, 
-        etc.) is normalized to all values of that obs type seen across all 
-        experiments. So, if there are three itc experiments, we will do a single
-        normalization across all three experiments. The normalization is 
-        (value - mean(value))/std(value) where the mean and std are taken 
-        over all experimental values with that obs. 
+        First, each unique 'obs' seen (e.g. heat, cd222, etc.) is normalized to
+        all values of that obs type seen across all experiments. So, if there
+        are three itc experiments, we will do a single normalization across all
+        three experiments. The normalization is: 
+            (value - mean(value))/std(value)
+        where the mean and std are taken over all experimental values with that
+        obs. 
         """
 
         # Create dictionary keying obs to a list of all observed values for that 
         # obs across experiments. 
         obs_values_seen = {}
         for expt in self._expt_list:
+
             for obs in expt.observables:
                 
                 keep = np.logical_not(expt.expt_data["ignore_point"])
@@ -253,8 +153,7 @@ class GlobalModel:
                 obs_values_seen[obs].extend(obs_values)
 
         # Create a normalization_params dictionary that keys obs to the mean and
-        # std of that obs. This allows other methods to normalize data on 
-        # the fly. 
+        # std of that obs. 
         self._normalization_params = {}
         for obs in obs_values_seen:
             
@@ -269,6 +168,199 @@ class GlobalModel:
             
             self._normalization_params[obs] = [mean_value,std_value]
 
+    def _load_observables(self):
+
+        # Flat list of observed values. Values to use for model()
+        self._y_obs = []
+        self._y_std = []
+
+        # Normalized observed values. Values to use for model_normalized()
+        # (value - mean)/std for y_obs
+        # (value/std)*y_std_scalar for y_std
+        self._y_obs_normalized = []
+        self._y_std_normalized = []
+
+        # These flat arrays allow us to reverse the normalizations:
+        # (value*std + mean) for y_obs
+        # (value*y_norm_std/y_std_scalar) or y_std
+        self._y_norm_mean = []
+        self._y_norm_std = []
+        self._y_std_scalar = []
+
+        # For each experiment
+        for expt_counter, expt in enumerate(self._expt_list):
+
+            # Add any macro_species from the model but not seen in the experiment
+            not_in_expt = set(self._bm.macro_species) - set(expt.expt_concs.columns)
+            for missing in not_in_expt:
+                expt.add_expt_conc_column(new_column=missing)
+        
+            # For each observable
+            for obs in expt.observables:
+
+                # For each point in the observable
+                for point_idx in range(len(expt.expt_data)):
+
+                    # Grab experimental point 
+                    obs_info = expt.observables[obs]
+                    expt_data = expt.expt_data.loc[expt.expt_data.index[point_idx],:]
+
+                    # Skip the point if ignored                
+                    if expt_data["ignore_point"]:
+                        continue
+
+                    # Record observations and standard deviations
+                    self._y_obs.append(expt_data[obs])
+                    self._y_std.append(expt_data[obs_info["std_column"]])
+
+                    # Get mean and std of obs for normalization
+                    obs_mean = self._normalization_params[obs][0]
+                    obs_std = self._normalization_params[obs][1]
+                    y_std_scalar = self._expt_std_scalar[expt_counter]
+
+                    # Record information that will be used to normalize the point
+                    self._y_norm_mean.append(obs_mean)
+                    self._y_norm_std.append(obs_std)
+                    self._y_std_scalar.append(y_std_scalar)
+
+                    # Do normalization
+                    y_obs_norm = (expt_data[obs] - obs_mean)/obs_std
+                    y_std_norm = self._y_std[-1]/obs_std*y_std_scalar
+
+                    # Record normalized values
+                    self._y_obs_normalized.append(y_obs_norm)
+                    self._y_std_normalized.append(y_std_norm)
+
+        # Convert lists populated above into numpy arrays
+        self._y_obs = np.array(self._y_obs)
+        self._y_std = np.array(self._y_std)
+
+        self._y_norm_mean = np.array(self._y_norm_mean)
+        self._y_norm_std = np.array(self._y_norm_std)
+        self._y_std_scalar = np.array(self._y_std_scalar)
+        
+        self._y_obs_normalized = np.array(self._y_obs_normalized)
+        self._y_std_normalized = np.array(self._y_std_normalized)
+
+
+    def _get_enthalpy_param(self):
+        """
+        Deal with enthalpy terms if needed. 
+        
+        Enthalpy change over a titration step is determined by change in
+        the concentration of microscopic species from the equilibrium. 
+        Ideally, there is a single species on one side of the reaction, 
+        so we can simply measure the change in the concentration of that
+        species. This block of code figures out which side of the 
+        equilibrium has fewer species and declares that the "product" for
+        accounting purposes. dh_sign records whether this is the right
+        side of the reaction (forward) with +1 or the left side of the 
+        reaction (backward) with -1. By applying dh_sign, the final 
+        enthalpy is always correct relative to the reaction definition. 
+        """
+
+        # Look for an ITC experiment
+        need_enthalpies = False
+        for expt in self._expt_list:
+            for obs in expt.observables:    
+                if expt.observables[obs]["type"] == "itc":
+                    need_enthalpies = True
+                    break
+
+        # If we do not need enthalpies, return without doing anything
+        if not need_enthalpies:    
+            return 
+
+        # Index of first enthalpy
+        self._dh_param_start_idx = len(self._all_parameter_names)
+        
+        # ------------------------------------------------------------------
+        # Reaction enthalpies
+
+        self._dh_sign = []
+        self._dh_product_mask = []
+        
+        # Create an enthalpy term (with associated dh_sign and dh_product_mask)
+        # for each equilibrium. 
+        for k in self._bm.equilibria:
+
+            # Get products and reactants of this equilibrium
+            reactants = self._bm.equilibria[k][0]
+            products = self._bm.equilibria[k][1]
+
+            # Figure out if products or reactants side has fewer species
+            if len(products) <= len(reactants):
+                self._dh_sign.append(1.0)
+                key_species = products[:]
+            else:
+                self._dh_sign.append(-1.0)
+                key_species = reactants[:]
+
+            # Create a mask that lets us grab the species we need to track 
+            # from the _micro_array array. 
+            self._dh_product_mask.append(np.isin(self._bm.micro_species,
+                                                    key_species))
+
+        # Record enthalpies as parameters
+        for s in self._bm.param_names:
+            self._all_parameter_names.append(f"dH_{s[1:]}")
+            self._parameter_guesses.append(0.0)
+
+        # ------------------------------------------------------------------
+        # Heats of dilution. 
+
+        # Figure out which species are being diluted when they go into the
+        # cell from the syringe. 
+        to_dilute = []
+        for expt in self._expt_list:
+            if expt.observables[obs]["type"] == "itc":
+                to_dilute.extend(expt.titrating_macro_species)
+        to_dilute = list(set(to_dilute))
+        
+        # Add heat of dilution parameters to the parameter array. Construct
+        # the dilution_mask to indicate which macro species these 
+        # correspond to. 
+        dilution_mask = []
+        for s in self._bm.macro_species:
+            if s in to_dilute:
+                dilution_mask.append(True)
+                self._all_parameter_names.append(f"nuisance_dil_{s}")
+                self._parameter_guesses.append(0.0)
+            else:
+                dilution_mask.append(False)
+
+        self._dilution_mask = np.array(dilution_mask,dtype=bool)
+                
+        # Last enthalpy index is last entry
+        self._dh_param_end_idx = len(self._all_parameter_names)  - 1
+    
+    def _get_expt_fudge(self):
+        """
+        Fudge parameters account for uncertainty in one of the total
+        concentrations each experiment. This is specified by `conc_to_float`
+        when the `Experiment` class is initialized. 
+        """
+
+        # Fudge parameters will be last parameters in the guess array   
+        self._fudge_list = []
+        for expt_counter, expt in enumerate(self._expt_list):
+            
+            # If an experiment has a conc_to_float specified, create a parameter
+            # and initialize it. 
+            if expt.conc_to_float:
+
+                param_name = f"nuisance_expt_{expt_counter}_{expt.conc_to_float}_fudge"
+                self._all_parameter_names.append(param_name)
+                self._parameter_guesses.append(1.0)
+                
+                fudge_species_index = np.where(self._bm.macro_species == expt.conc_to_float)[0][0]
+                fudge_value_index = len(self._all_parameter_names) - 1
+                
+                self._fudge_list.append((fudge_species_index,fudge_value_index))
+                        
+            else:
+                self._fudge_list.append(None)
+    
 
     def _add_point(self,point_idx,expt_idx,obs):
 
@@ -291,7 +383,7 @@ class GlobalModel:
                            macro_array=self._macro_arrays[-1],
                            del_macro_array=self._del_macro_arrays[-1],
                            obs_mask=np.isin(self._bm.micro_species,
-                                               obs_info["microspecies"]),
+                                            obs_info["microspecies"]),
                            denom=den_index)
             
         elif obs_info["type"] == "itc":
@@ -318,48 +410,26 @@ class GlobalModel:
             err = f"The obs type '{obs_type}' is not recognized\n"
             raise ValueError(err)
 
-        # Record point, observations, and standard deviation
         self._points.append(pt)
-        self._y_obs.append(expt_data[obs])
-        self._y_std.append(expt_data[obs_info["std_column"]])
-
-        # Get mean and std of obs for normalization
-        obs_mean = self._normalization_params[obs][0]
-        obs_std = self._normalization_params[obs][1]
-
-        # Record point normalization
-        self._y_norm_mean.append(obs_mean)
-        self._y_norm_std.append(obs_std)
-        self._y_obs_normalized.append((expt_data[obs] - obs_mean)/obs_std)
-        self._y_std_normalized.append(self._y_std[-1]/obs_std)
-
 
     def _build_point_map(self):
 
-        # Lists of arrays that can be referenced by the individual points
-        self._micro_arrays = []
+        # Lists of arrays that can be referenced by all points in the 
+        # experiments. There is an entry for each experiment. The values in 
+        # these arrays are set globally. 
+        self._ref_macro_arrays = []
         self._macro_arrays = []
+        self._micro_arrays = []
         self._del_macro_arrays = []
         self._expt_syringe_concs = []
 
-        # Points
+        # List of all points
         self._points = []
 
-        # Observed values
-        self._y_obs = []
-        self._y_std = []
-
-        # Normalized observed values (and how to do it)
-        self._y_obs_normalized = []
-        self._y_std_normalized = []
-
-        self._y_norm_mean = []
-        self._y_norm_std = []
-        
         for expt_counter, expt in enumerate(self._expt_list):
 
             # Each experiment has:
-            # 
+            
             # 1. An array of microscopic species concentrations
             self._micro_arrays.append(np.ones((len(expt.expt_data),
                                                 len(self._bm.micro_species)),
@@ -367,8 +437,9 @@ class GlobalModel:
 
             # 2. An array of macroscopic species concentrations
             macro_array = np.array(expt.expt_concs.loc[:,self._bm.macro_species],
-                                   dtype=float)
-            self._macro_arrays.append(macro_array)
+                                   dtype=float).copy()
+            self._ref_macro_arrays.append(macro_array)
+            self._macro_arrays.append(self._ref_macro_arrays[-1].copy())
 
             # 3. An array of the change in macro species relative to syringe. 
             syringe_concs = []
@@ -388,30 +459,18 @@ class GlobalModel:
                 # Go through each experimental point
                 for i in range(len(expt.expt_data)):
 
-                    # Add that point to the lsit of all points
+                    # Add that point to the list of all points. The final list 
+                    # of points will exactly match the values in y_obs, y_std,
+                    # etc.
                     self._add_point(point_idx=i,
                                     expt_idx=expt_counter,
                                     obs=obs)
             
-        # Convert lists populated above into numpy arrays
-        self._y_obs = np.array(self._y_obs)
-        self._y_std = np.array(self._y_std)
-
-        self._y_norm_mean = np.array(self._y_norm_mean)
-        self._y_norm_std = np.array(self._y_norm_std)
-        
-        self._y_obs_normalized = np.array(self._y_obs_normalized)
-        self._y_std_normalized = np.array(self._y_std_normalized)
-    
     def model_normalized(self,guesses):
         """
         Model where each experiment is normalized to its mean and standard 
         deviation. Should be regressed against self.y_obs_normalized and 
         self.y_std_normalized, *not* self.y_obs and self.y_std. 
-
-        When this method is run, self.y_calc will be updated properly, 
-        allowing self.y_calc and self.y_obs to be directly compared, even after
-        regressing against normalized values. 
         """
 
         # Run model un-normalized (which updates self._y_calc)
@@ -427,17 +486,16 @@ class GlobalModel:
         """
         """
 
-        # Work on copy of guesses because we're going to edit 
-        guesses = guesses.copy()
-
         # Grab binding parameters from guesses. 
         start = self._bm_param_start_idx
         end = self._bm_param_end_idx+1
     
-        # For each block of macro species
+        # For each experiment, update the macro_arrays (which might change due
+        # to a fudge factor) and then update micro_arrays (which might change 
+        # due to change in macro_array and/or changes in model parameters)
         for i in range(len(self._macro_arrays)):
-        
-            # Figure out if we are fudging a macro array species concentration
+
+            # Figure if/how to fudge one of the macro array concentrations
             if self._fudge_list[i] is not None:
                 fudge_species_index = self._fudge_list[i][0]
                 fudge_value = guesses[self._fudge_list[i][1]]
@@ -445,23 +503,21 @@ class GlobalModel:
                 fudge_species_index = 0
                 fudge_value = 1.0
 
-            # For each titration step in this experiment (row of concs in 
-            # marco_arrays[i])
-            for j in range(len(self._macro_arrays[i])):
+            # Get reference macro array without any fudge factor
+            self._macro_arrays[i] = self._ref_macro_arrays[i].copy()
 
-                # Build a vector with macro concentrations for this titration
-                # step, possibly with one fudged
-                this_macro_array = self._macro_arrays[i][j,:].copy()
-                this_macro_array[fudge_species_index] *= fudge_value
-
-                # Update microscopic species concentrations
-                self._micro_arrays[i][j,:] = self._bm.get_concs(param_array=guesses[start:end],
-                                                                macro_array=this_macro_array)
+            # Fudge the macro array
+            self._macro_arrays[i][:,fudge_species_index] *= fudge_value
 
             # Update del_macro_array
-            this_macro_array = self._macro_arrays[i].copy()
-            this_macro_array[fudge_species_index] *= fudge_value
-            self._del_macro_arrays[i] = this_macro_array - self._expt_syringe_concs[i] 
+            self._del_macro_arrays[i] = self._expt_syringe_concs[i] - self._macro_arrays[i]
+
+            # For each titration step in this experiment (row of concs in 
+            # marco_arrays[i]), update _micro_arrays[i] with the binding model
+            for j in range(len(self._macro_arrays[i])):
+
+                self._micro_arrays[i][j,:] = self._bm.get_concs(param_array=guesses[start:end],
+                                                                macro_array=self._macro_arrays[i][j,:])
 
         # For each point, calculate the observable given the estimated microscopic
         # and macroscopic concentrations
@@ -498,7 +554,7 @@ class GlobalModel:
     def y_std_normalized(self):
         """
         Vector of standard deviations of observed values normalized by 
-        (obs - mean(obs))/std(obs). Pairs with y_obs_normalized. 
+        (y_std*expt_std_scalar)/std(obs). Pairs with y_obs_normalized. 
         """
         return self._y_std_normalized
 
@@ -580,6 +636,8 @@ class GlobalModel:
             
         out["y_obs"] = self.y_obs
         out["y_std"] = self.y_std
+        out["y_obs_norm"] = self.y_obs_normalized
+        out["y_std_norm"] = self.y_std_normalized
 
         return pd.DataFrame(out)
 

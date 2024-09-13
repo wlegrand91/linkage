@@ -1,5 +1,5 @@
 
-from linkage.experiment.point.experimental_point import ExperimentalPoint
+from linkage.organizer.point.experimental_point import ExperimentalPoint
 
 import numpy as np
 
