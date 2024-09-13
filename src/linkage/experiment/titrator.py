@@ -77,7 +77,6 @@ def _titr_constant_volume(cell_contents,
         # Record current volume and injection
         out["injection"].append(injection_array[i])
         out["volume"].append(cell_volume)
-        out["meas_vol_dilution"].append(1)
 
         # Update cell concs based on injected titrant
         for s in cell_contents.keys():
@@ -103,15 +102,12 @@ def _titr_increase_volume(cell_contents,
     meas_vol_dilution = 1
     for i in range(len(injection_array)):
 
-        meas_vol_dilution = (1 - 2*injection_array[i]/cell_volume)
-
         # Get volume after this injection is injected
         new_volume = current_volume + injection_array[i]
             
         # Record current volume and injection
         out["injection"].append(injection_array[i])
         out["volume"].append(new_volume)
-        out["meas_vol_dilution"].append(meas_vol_dilution)
 
         # Update cell concs based on injected titrant
         for s in cell_contents.keys():
@@ -177,7 +173,6 @@ def titrator(cell_contents,
     out = {}
     out["injection"] = []
     out["volume"] = []
-    out["meas_vol_dilution"] = []
     for s in species:
         out[s] = []
     

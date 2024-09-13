@@ -320,16 +320,16 @@ class GlobalModel:
         # Add heat of dilution parameters to the parameter array. Construct
         # the dilution_mask to indicate which macro species these 
         # correspond to. 
-        dilution_mask = []
+        dh_dilution_mask = []
         for s in self._bm.macro_species:
             if s in to_dilute:
-                dilution_mask.append(True)
+                dh_dilution_mask.append(True)
                 self._all_parameter_names.append(f"nuisance_dil_{s}")
                 self._parameter_guesses.append(0.0)
             else:
-                dilution_mask.append(False)
+                dh_dilution_mask.append(False)
 
-        self._dilution_mask = np.array(dilution_mask,dtype=bool)
+        self._dh_dilution_mask = np.array(dh_dilution_mask,dtype=bool)
                 
         # Last enthalpy index is last entry
         self._dh_param_end_idx = len(self._all_parameter_names)  - 1
@@ -367,43 +367,42 @@ class GlobalModel:
         # Information about observable and experimental data
         expt = self._expt_list[expt_idx]
         obs_info = expt.observables[obs]
-        expt_data = expt.expt_data.loc[expt.expt_data.index[point_idx],:]
         
-        if expt_data["ignore_point"]:
+        data_idx = expt.expt_data.index[point_idx]
+        total_volume = float(expt.expt_concs.loc[data_idx,"volume"])
+        injection_volume = float(expt.expt_data.loc[data_idx,"injection"])
+
+        if expt.expt_data.loc[data_idx,"ignore_point"]:
             return
             
+        point_kwargs = {"idx":point_idx,
+                        "expt_idx":expt_idx,
+                        "obs_key":obs,
+                        "micro_array":self._micro_arrays[-1],
+                        "macro_array":self._macro_arrays[-1],
+                        "del_macro_array":self._del_macro_arrays[-1],
+                        "total_volume":total_volume,
+                        "injection_volume":injection_volume}
+
         if obs_info["type"] == "spec":
 
-            den_index = np.where(self._bm.macro_species == obs_info["macrospecies"])[0][0]
+            obs_mask = np.isin(self._bm.micro_species,obs_info["microspecies"])
+            denom = np.where(self._bm.macro_species == obs_info["macrospecies"])[0][0]
 
-            pt = SpecPoint(idx=point_idx,
-                           expt_idx=expt_idx,
-                           obs_key=obs,
-                           micro_array=self._micro_arrays[-1],
-                           macro_array=self._macro_arrays[-1],
-                           del_macro_array=self._del_macro_arrays[-1],
-                           obs_mask=np.isin(self._bm.micro_species,
-                                            obs_info["microspecies"]),
-                           denom=den_index)
+            point_kwargs["obs_mask"] = obs_mask
+            point_kwargs["denom"] = denom
+
+            pt = SpecPoint(**point_kwargs)
             
         elif obs_info["type"] == "itc":
-
-            meas_vol_dilution = expt.expt_concs.loc[expt.expt_data.index[point_idx],
-                                                    "meas_vol_dilution"]
             
-            pt = ITCPoint(idx=point_idx,
-                          expt_idx=expt_idx,
-                          obs_key=obs,
-                          micro_array=self._micro_arrays[-1],
-                          macro_array=self._macro_arrays[-1],
-                          del_macro_array=self._del_macro_arrays[-1],
-                          dilution_mask=self._dilution_mask,
-                          meas_vol_dilution=meas_vol_dilution,
-                          dh_param_start_idx=self._dh_param_start_idx,
-                          dh_param_end_idx=self._dh_param_end_idx + 1,
-                          dh_sign=self._dh_sign,
-                          dh_product_mask=self._dh_product_mask,
-                          injection_volume=float(expt_data["injection"])*1e-6)
+            point_kwargs["dh_param_start_idx"] = self._dh_param_start_idx
+            point_kwargs["dh_param_end_idx"] = self._dh_param_end_idx + 1
+            point_kwargs["dh_sign"] = self._dh_sign
+            point_kwargs["dh_product_mask"] = self._dh_product_mask
+            point_kwargs["dh_dilution_mask"] = self._dh_dilution_mask
+
+            pt = ITCPoint(**point_kwargs)
 
         else:
             obs_type = obs_info["type"]
@@ -496,13 +495,13 @@ class GlobalModel:
         for i in range(len(self._macro_arrays)):
 
             # Figure if/how to fudge one of the macro array concentrations
-            if self._fudge_list[i] is not None:
-                fudge_species_index = self._fudge_list[i][0]
-                fudge_value = guesses[self._fudge_list[i][1]]
-            else:
+            if self._fudge_list[i] is None:
                 fudge_species_index = 0
                 fudge_value = 1.0
-
+            else:
+                fudge_species_index = self._fudge_list[i][0]
+                fudge_value = guesses[self._fudge_list[i][1]]
+            
             # Get reference macro array without any fudge factor
             self._macro_arrays[i] = self._ref_macro_arrays[i].copy()
 
@@ -600,7 +599,9 @@ class GlobalModel:
 
         out = {"expt_id":[],
                "expt_type":[],
-               "expt_obs":[]}
+               "expt_obs":[],
+               "volume":[],
+               "injection":[]}
 
         for k in self._bm.macro_species:
             out[k] = []
@@ -627,6 +628,9 @@ class GlobalModel:
             else:
                 err = "point class not recognized\n"
                 raise ValueError(err)
+
+            out["volume"].append(p._total_volume)
+            out["injection"].append(p._injection_volume)
 
             for i, k in enumerate(self._bm.macro_species):
                 out[k].append(p._macro_array[p._idx,i])

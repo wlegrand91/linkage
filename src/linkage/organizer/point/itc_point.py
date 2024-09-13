@@ -16,13 +16,13 @@ class ITCPoint(ExperimentalPoint):
                  micro_array,
                  macro_array,
                  del_macro_array,
-                 dilution_mask,
-                 meas_vol_dilution,
+                 total_volume,
+                 injection_volume,
                  dh_param_start_idx,
                  dh_param_end_idx,
                  dh_sign,
                  dh_product_mask,
-                 injection_volume):
+                 dh_dilution_mask):
         """
         Initialize an ITC data point. 
         
@@ -43,13 +43,10 @@ class ITCPoint(ExperimentalPoint):
         del_macro_array : np.ndarray (float)
             array holding change in concentrations of all macroscopic species 
             from the syringe to this condition
-        dilution_mask : np.ndarray (bool)
-            mask indicating which macro species have a dilution heat associated
-            with them. 
-        meas_vol_dilution : float
-            how much this shot diluted the measurement volume of the cell. This
-            is calculated using the "titrator" function and corresponds to 
-            (1 - v/V) where v is the injection volume and V is the cell volume
+        total_volume : float
+            total volume of cell plus titrant at this point in the titration
+        injection_volume : float
+            volume of last injection
         dh_param_start_idx : int
             index of first enthalpy parameter in guesses array
         dh_param_end_idx : int
@@ -60,8 +57,9 @@ class ITCPoint(ExperimentalPoint):
         dh_product_mask : list-like
             list of boolean masks for pulling out products when calcuating 
             enthalpy changes
-        injection_volume : float
-            injection volume in L
+        dh_dilution_mask : np.ndarray (bool)
+            mask indicating which macro species have a dilution heat associated
+            with them. 
         """
         
         super().__init__(idx=idx,
@@ -69,14 +67,16 @@ class ITCPoint(ExperimentalPoint):
                          obs_key=obs_key,
                          micro_array=micro_array,
                          macro_array=macro_array,
-                         del_macro_array=del_macro_array)
-        
-        self._dilution_mask = dilution_mask
-        self._meas_vol_dilution = meas_vol_dilution
+                         del_macro_array=del_macro_array,
+                         total_volume=total_volume,
+                         injection_volume=injection_volume)
+
+        # Get dh specific parameters        
         self._dh_param_start_idx = dh_param_start_idx
         self._dh_param_end_idx = dh_param_end_idx
         self._dh_sign = dh_sign
         self._dh_product_mask = dh_product_mask
+        self._dh_dilution_mask = dh_dilution_mask
 
         # Decide how to cut parameter array into enthalpies (first block of
         # param) and heats of dilution (second block of param)
@@ -85,7 +85,9 @@ class ITCPoint(ExperimentalPoint):
         self._dil_first = self._dh_last
         self._dil_last = self._dh_param_end_idx
 
-        self._injection_volume = injection_volume
+        # Get volume dilution scalar
+        self._meas_vol_dilution = (1 - self._injection_volume/self._total_volume)
+
         
     def calc_value(self,parameters,*args,**kwargs):
         """
@@ -125,8 +127,11 @@ class ITCPoint(ExperimentalPoint):
 
             total_heat += dh_array[i]*self._dh_sign[i]*dC
 
-        # Dilution correction        
-        dil_array = parameters[self._dil_first:self._dil_last]
-        total_heat += np.sum(dil_array*self._del_macro_array[self._idx,self._dilution_mask])*self._injection_volume
+        total_heat = total_heat*self._total_volume
 
+        # Heat of dilution
+        dil_heats = parameters[self._dil_first:self._dil_last]
+        molar_change = self._del_macro_array[self._idx,self._dh_dilution_mask]
+        total_heat += np.sum(dil_heats*molar_change)*self._injection_volume
+        
         return total_heat

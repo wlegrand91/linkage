@@ -12,7 +12,9 @@ class ExperimentalPoint:
                  obs_key,
                  micro_array,
                  macro_array,
-                 del_macro_array):
+                 del_macro_array,
+                 total_volume,
+                 injection_volume):
         """
         Should be sub-classed.
         """
@@ -23,6 +25,9 @@ class ExperimentalPoint:
         self._micro_array = micro_array
         self._macro_array = macro_array
         self._del_macro_array = del_macro_array
+        self._total_volume = total_volume
+        self._injection_volume = injection_volume
+        
 
     @property
     def idx(self):
