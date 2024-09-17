@@ -12,6 +12,8 @@ def test_SpecPoint():
     micro_array = np.ones((50,10),dtype=float)
     macro_array = np.ones((50,3),dtype=float)
     del_macro_array = np.zeros((50,3),dtype=float)
+    total_volume = 200e-6
+    injection_volume = 1e-6
     
     obs_mask = np.zeros(10,dtype=bool)
     obs_mask[1] = True
@@ -23,6 +25,8 @@ def test_SpecPoint():
                   micro_array=micro_array,
                   macro_array=macro_array,
                   del_macro_array=del_macro_array,
+                  total_volume=total_volume,
+                  injection_volume=injection_volume,
                   obs_mask=obs_mask,
                   denom=denom)
   
@@ -34,11 +38,13 @@ def test_SpecPoint():
     assert e._macro_array is macro_array
     assert e._del_macro_array is del_macro_array
 
+    assert e._total_volume == total_volume
+    assert e._injection_volume == injection_volume
+
     assert e._obs_mask is obs_mask
     assert e._denom == denom
 
 def test_SpecPoint_calc_value():
-
 
     expt_idx = 1
     obs_key = "test"
@@ -55,6 +61,9 @@ def test_SpecPoint_calc_value():
     macro_array[0,2] = 50
     macro_array[1,2] = 150
 
+    total_volume = 200e-6
+    injection_volume = 1e-6
+
     # look at species 1 in micro array
     obs_mask = np.zeros(10,dtype=bool)
     obs_mask[1] = True
@@ -68,6 +77,8 @@ def test_SpecPoint_calc_value():
                   micro_array=micro_array,
                   macro_array=macro_array,
                   del_macro_array=del_macro_array,
+                  total_volume=total_volume,
+                  injection_volume=injection_volume,
                   obs_mask=obs_mask,
                   denom=denom)
     
@@ -80,6 +91,8 @@ def test_SpecPoint_calc_value():
                   micro_array=micro_array,
                   macro_array=macro_array,
                   del_macro_array=del_macro_array,
+                  total_volume=total_volume,
+                  injection_volume=injection_volume,
                   obs_mask=obs_mask,
                   denom=denom)
     
@@ -100,6 +113,8 @@ def test_SpecPoint_calc_value():
                   micro_array=micro_array,
                   macro_array=macro_array,
                   del_macro_array=del_macro_array,
+                  total_volume=total_volume,
+                  injection_volume=injection_volume,
                   obs_mask=obs_mask,
                   denom=denom)
     
@@ -112,6 +127,8 @@ def test_SpecPoint_calc_value():
                   micro_array=micro_array,
                   macro_array=macro_array,
                   del_macro_array=del_macro_array,
+                  total_volume=total_volume,
+                  injection_volume=injection_volume,
                   obs_mask=obs_mask,
                   denom=denom)
     
