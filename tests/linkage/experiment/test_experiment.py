@@ -115,7 +115,7 @@ def test_Experiment():
     assert e._syringe_contents["A"] == 0
     assert e._syringe_contents["B"] == 10
     assert issubclass(type(e._expt_concs),pd.DataFrame)
-    assert np.array_equal(e._expt_concs.columns,["injection","volume","meas_vol_dilution","A","B"])
+    assert np.array_equal(e._expt_concs.columns,["injection","volume","A","B"])
     assert e._conc_to_float is None
     assert issubclass(type(e._observables),dict)
     assert len(e._observables) == 0
@@ -406,12 +406,12 @@ def test_add_expt_column():
     
     e.add_expt_conc_column(new_column="new_column")
     assert np.array_equal(e._expt_concs.columns,
-                          ["injection","volume","meas_vol_dilution","A","B","new_column"])
+                          ["injection","volume","A","B","new_column"])
     assert np.array_equal(e._expt_concs["new_column"],np.zeros(3))
 
     e.add_expt_conc_column(new_column="blah",conc_vector=np.array([3,2,1]))
     assert np.array_equal(e._expt_concs.columns,
-                          ["injection","volume","meas_vol_dilution","A","B","new_column","blah"])
+                          ["injection","volume","A","B","new_column","blah"])
     assert np.array_equal(e._expt_concs["blah"],[3,2,1])
 
     

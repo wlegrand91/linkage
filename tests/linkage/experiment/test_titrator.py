@@ -85,7 +85,6 @@ def test__titr_constant_volume():
     
     assert np.array_equal(out["injection"],injection_array)
     assert np.array_equal(out["volume"],[100,100,100])
-    assert np.array_equal(out["meas_vol_dilution"],[1,1,1])
     assert np.allclose(out["A"],
                        [1,
                         ((100 - 1)*1 + 10*1)/100,
@@ -125,7 +124,6 @@ def test__titr_increase_volume():
     
     assert np.array_equal(out["injection"],injection_array)
     assert np.array_equal(out["volume"],[100,101,111])
-    assert np.array_equal(out["meas_vol_dilution"],[1,1-1/100,1-10/100])
     
 
     assert np.allclose(out["A"],

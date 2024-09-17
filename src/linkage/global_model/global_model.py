@@ -659,7 +659,7 @@ class GlobalModel:
             elif issubclass(type(p),ITCPoint):
                 out["expt_type"].append("itc")
 
-                out["expt_obs"].append("heat")
+                out["expt_obs"].append("obs_heat")
 
             else:
                 err = "point class not recognized\n"

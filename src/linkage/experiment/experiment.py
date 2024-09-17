@@ -135,11 +135,11 @@ class Experiment:
         """
             
         if obs_column not in self._expt_data.columns:
-            err = "column_name should be one of the columns in the experimental data\n"
+            err = f"obs_column '{obs_column}' should be one of the columns in the experimental data\n"
             raise ValueError(err)
 
         if obs_column == "injection":
-            err = "column_name cannot be injection\n"
+            err = "obs_column cannot be 'injection'\n"
             raise ValueError(err)
     
         # Deal with uncertainty

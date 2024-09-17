@@ -18,7 +18,7 @@ def create_fake_itc_data():
     # Create fake data that has the number of injections we want, but no sane
     # values. 
     itc_data = pd.DataFrame({"injection":2*np.ones(25),
-                             "heat":np.random.normal(0,1,25)})
+                             "obs_heat":np.random.normal(0,1,25)})
     
     # Create an experiment from the fake data where we titrate ET into an 
     # empty cell
@@ -27,7 +27,7 @@ def create_fake_itc_data():
                                       syringe_contents={"ET":5e-3},
                                       conc_to_float=None,
                                       cell_volume=280)
-    a.define_itc_observable(obs_column="heat",
+    a.define_itc_observable(obs_column="obs_heat",
                             obs_std=0.1)
     
     
@@ -38,7 +38,7 @@ def create_fake_itc_data():
                                       syringe_contents={"ET":5e-3},
                                       conc_to_float=None,
                                       cell_volume=280)
-    b.define_itc_observable(obs_column="heat",
+    b.define_itc_observable(obs_column="obs_heat",
                             obs_std=0.1)
     
     # Create a linkage model using the CaEDTA binding model and these two 
@@ -80,7 +80,7 @@ def create_fake_itc_data():
 
         out = {}
         out["injection"] = np.array(inj)
-        out["heat"] = np.array(heat)
+        out["obs_heat"] = np.array(heat)
     
         out_df = pd.DataFrame(out)
     
