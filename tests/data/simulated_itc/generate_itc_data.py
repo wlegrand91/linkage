@@ -28,7 +28,7 @@ def create_fake_itc_data():
                                       conc_to_float=None,
                                       cell_volume=280)
     a.define_itc_observable(obs_column="heat",
-                            obs_stdev=0.1)
+                            obs_std=0.1)
     
     
     # Create an experiment from the fake data where we titrate ET into a cell
@@ -39,7 +39,7 @@ def create_fake_itc_data():
                                       conc_to_float=None,
                                       cell_volume=280)
     b.define_itc_observable(obs_column="heat",
-                            obs_stdev=0.1)
+                            obs_std=0.1)
     
     # Create a linkage model using the CaEDTA binding model and these two 
     # experiments. 

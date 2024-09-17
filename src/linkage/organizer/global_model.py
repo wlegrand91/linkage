@@ -10,12 +10,13 @@ import copy
 class GlobalModel:
     """
     This class brings together a list of experiments and a thermodynamic model
-    and generates an integrated model. This model will have:
+    and generates an integrated model. This model will have the following 
+    parameters:
     
     + equilibrium constants from model
     + a nuisance concentration parameter for each experiment (if requested)
-    + enthalpies for each equilibrium and heats of dilution (if at least one ITC
-      experiment is passed in)
+    + enthalpies for each of the model equilibria and heats of dilution for 
+      titrating species (if at least one ITC experiment is passed in)
 
     This class also:
     
@@ -90,15 +91,15 @@ class GlobalModel:
         self._bm = available_models[self._model_name]()
 
         # Record names of the model parameters
-        self._all_parameter_names = []
+        self._parameter_names = []
         self._parameter_guesses = []
         for p in self._bm.param_names:
-            self._all_parameter_names.append(p)
+            self._parameter_names.append(p)
             self._parameter_guesses.append(0.0)
 
         # Record indexes spanning parameter guesses
         self._bm_param_start_idx = 0
-        self._bm_param_end_idx = len(self._all_parameter_names) - 1
+        self._bm_param_end_idx = len(self._parameter_names) - 1
             
     def _get_expt_std_scalar(self):
         """
@@ -224,7 +225,7 @@ class GlobalModel:
                     self._y_std_scalar.append(y_std_scalar)
 
                     # Do normalization
-                    y_obs_norm = (expt_data[obs] - obs_mean)/obs_std
+                    y_obs_norm = (self._y_obs[-1] - obs_mean)/obs_std
                     y_std_norm = self._y_std[-1]/obs_std*y_std_scalar
 
                     # Record normalized values
@@ -272,7 +273,7 @@ class GlobalModel:
             return 
 
         # Index of first enthalpy
-        self._dh_param_start_idx = len(self._all_parameter_names)
+        self._dh_param_start_idx = len(self._parameter_names)
         
         # ------------------------------------------------------------------
         # Reaction enthalpies
@@ -303,7 +304,7 @@ class GlobalModel:
 
         # Record enthalpies as parameters
         for s in self._bm.param_names:
-            self._all_parameter_names.append(f"dH_{s[1:]}")
+            self._parameter_names.append(f"dH_{s[1:]}")
             self._parameter_guesses.append(0.0)
 
         # ------------------------------------------------------------------
@@ -313,8 +314,9 @@ class GlobalModel:
         # cell from the syringe. 
         to_dilute = []
         for expt in self._expt_list:
-            if expt.observables[obs]["type"] == "itc":
-                to_dilute.extend(expt.titrating_macro_species)
+            for obs in expt.observables:
+                if expt.observables[obs]["type"] == "itc":
+                    to_dilute.extend(expt.titrating_macro_species)
         to_dilute = list(set(to_dilute))
         
         # Add heat of dilution parameters to the parameter array. Construct
@@ -324,7 +326,7 @@ class GlobalModel:
         for s in self._bm.macro_species:
             if s in to_dilute:
                 dh_dilution_mask.append(True)
-                self._all_parameter_names.append(f"nuisance_dil_{s}")
+                self._parameter_names.append(f"nuisance_dil_{s}")
                 self._parameter_guesses.append(0.0)
             else:
                 dh_dilution_mask.append(False)
@@ -332,7 +334,7 @@ class GlobalModel:
         self._dh_dilution_mask = np.array(dh_dilution_mask,dtype=bool)
                 
         # Last enthalpy index is last entry
-        self._dh_param_end_idx = len(self._all_parameter_names)  - 1
+        self._dh_param_end_idx = len(self._parameter_names)  - 1
     
     def _get_expt_fudge(self):
         """
@@ -350,11 +352,11 @@ class GlobalModel:
             if expt.conc_to_float:
 
                 param_name = f"nuisance_expt_{expt_counter}_{expt.conc_to_float}_fudge"
-                self._all_parameter_names.append(param_name)
+                self._parameter_names.append(param_name)
                 self._parameter_guesses.append(1.0)
                 
                 fudge_species_index = np.where(self._bm.macro_species == expt.conc_to_float)[0][0]
-                fudge_value_index = len(self._all_parameter_names) - 1
+                fudge_value_index = len(self._parameter_names) - 1
                 
                 self._fudge_list.append((fudge_species_index,fudge_value_index))
                         
@@ -465,15 +467,35 @@ class GlobalModel:
                                     expt_idx=expt_counter,
                                     obs=obs)
             
-    def model_normalized(self,guesses):
+    def model_normalized(self,parameters):
         """
-        Model where each experiment is normalized to its mean and standard 
-        deviation. Should be regressed against self.y_obs_normalized and 
-        self.y_std_normalized, *not* self.y_obs and self.y_std. 
+        Model output where each experiment is normalized to its experimental
+        mean, standard deviation, and number of experimental points. This 
+        is useful for regression because each point contributes the same amount
+        to the regression. 
+        
+        Parameters
+        ----------
+        parameters : np.ndarray
+            array of parameter values corresponding to the parameters in 
+            self.parameter_names
+        
+        Returns
+        -------
+        y_calc_norm : np.ndarray
+            array of outputs calculated across conditions. pairs with 
+            self.y_obs_normalized and and self.y_std_normalized
+
+        Note
+        ----
+        This should be regressed against self.y_obs_normalized and 
+        self.y_std_normalized, *not* self.y_obs and self.y_std. The resulting 
+        parameter estimates should then reproduce self.y_obs if passed back into
+        self.model. 
         """
 
         # Run model un-normalized (which updates self._y_calc)
-        y_calc = self.model(guesses)
+        y_calc = self.model(parameters)
 
         # Now normalize y_calc_norm
         y_calc_norm = (y_calc - self._y_norm_mean)/self._y_norm_std
@@ -481,8 +503,22 @@ class GlobalModel:
         # Return
         return y_calc_norm
 
-    def model(self,guesses):
+    def model(self,parameters):
         """
+        Model output. Can be used to draw plots or as the target of a regression
+        analysis against y_obs. 
+
+        Parameters
+        ----------
+        parameters : np.ndarray
+            array of parameter values corresponding to the parameters in 
+            self.parameter_names
+        
+        Returns
+        -------
+        y_calc : np.ndarray
+            array of outputs calculated across conditions. pairs with self.y_obs
+            and self.y_std
         """
 
         # Grab binding parameters from guesses. 
@@ -500,7 +536,7 @@ class GlobalModel:
                 fudge_value = 1.0
             else:
                 fudge_species_index = self._fudge_list[i][0]
-                fudge_value = guesses[self._fudge_list[i][1]]
+                fudge_value = parameters[self._fudge_list[i][1]]
             
             # Get reference macro array without any fudge factor
             self._macro_arrays[i] = self._ref_macro_arrays[i].copy()
@@ -515,14 +551,14 @@ class GlobalModel:
             # marco_arrays[i]), update _micro_arrays[i] with the binding model
             for j in range(len(self._macro_arrays[i])):
 
-                self._micro_arrays[i][j,:] = self._bm.get_concs(param_array=guesses[start:end],
+                self._micro_arrays[i][j,:] = self._bm.get_concs(param_array=parameters[start:end],
                                                                 macro_array=self._macro_arrays[i][j,:])
 
         # For each point, calculate the observable given the estimated microscopic
         # and macroscopic concentrations
         y_calc = np.ones(len(self._points))*np.nan
         for i in range(len(self._points)):
-            y_calc[i] = self._points[i].calc_value(guesses)
+            y_calc[i] = self._points[i].calc_value(parameters)
 
         return y_calc
 
@@ -562,7 +598,7 @@ class GlobalModel:
         """
         Names of all fit parameters, in stable order.
         """
-        return self._all_parameter_names
+        return self._parameter_names
             
     @property
     def parameter_guesses(self):
@@ -592,7 +628,7 @@ class GlobalModel:
         Names of all microspecies, in stable order expected by the linkage 
         model. 
         """
-        return self._micro_species
+        return self._bm.micro_species
     
     @property
     def as_df(self):
