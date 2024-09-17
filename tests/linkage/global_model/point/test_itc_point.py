@@ -1,5 +1,5 @@
 
-from linkage.organizer.point.itc_point import ITCPoint
+from linkage.global_model.point.itc_point import ITCPoint
 
 import numpy as np
 

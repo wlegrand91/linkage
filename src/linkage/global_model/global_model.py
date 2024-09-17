@@ -1,6 +1,6 @@
 import linkage.models
-from linkage.organizer.point.spec_point import SpecPoint
-from linkage.organizer.point.itc_point import ITCPoint
+from linkage.global_model.point.spec_point import SpecPoint
+from linkage.global_model.point.itc_point import ITCPoint
 
 import numpy as np
 import pandas as pd

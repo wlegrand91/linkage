@@ -1,5 +1,5 @@
 
-from linkage.organizer.point.spec_point import SpecPoint
+from linkage.global_model.point.spec_point import SpecPoint
 
 import numpy as np
 
