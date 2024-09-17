@@ -102,15 +102,15 @@ def simulated_itc():
                                cell_contents={},
                                syringe_contents={"ET":5e-3},
                                cell_volume=280)
-    blank.define_itc_observable(obs_column="heat",
-                                obs_stdev=0.003)
+    blank.define_itc_observable(obs_column="obs_heat",
+                                obs_std=0.003)
     
     expt = linkage.Experiment(expt_data=files["binding_expt.csv"],
                               cell_contents={"CT":0.5e-3},
                               syringe_contents={"ET":5e-3},
                               cell_volume=280)
-    expt.define_itc_observable(obs_column="heat",
-                               obs_stdev=0.003)
+    expt.define_itc_observable(obs_column="obs_heat",
+                               obs_std=0.003)
     
     guesses = np.array([7,-11900,0,-50])
 
@@ -128,7 +128,7 @@ def fake_spec_and_itc_data():
     expt_data.loc[expt_data.index[0],"injection"] = 0.0
 
     itc_data = pd.DataFrame({"injection":25*np.ones(50),
-                            "heat":np.random.normal(0,1,50)})
+                            "obs_heat":np.random.normal(0,1,50)})
 
 
     # Load spec data
@@ -140,11 +140,11 @@ def fake_spec_and_itc_data():
                                     cell_volume=1800)
 
     e.define_spectroscopic_observable(obs_column="cd222",
-                                      obs_stdev=0.1,
+                                      obs_std=0.1,
                                       obs_microspecies="I",
                                       obs_macrospecies="AT")
     e.define_spectroscopic_observable(obs_column="cd240",
-                                      obs_stdev=0.1,
+                                      obs_std=0.1,
                                       obs_microspecies=["I","A"],
                                       obs_macrospecies="AT")
 
@@ -154,8 +154,8 @@ def fake_spec_and_itc_data():
                 syringe_contents={"ET":1e-3},
                 conc_to_float=None,
                 cell_volume=1800)
-    f.define_itc_observable(obs_column="heat",
-                            obs_stdev=0.1)
+    f.define_itc_observable(obs_column="obs_heat",
+                            obs_std=0.1)
 
     expt_list = [e,f]
 

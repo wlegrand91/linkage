@@ -33,15 +33,16 @@ def test_titrator():
 
 def test_sync_cell_and_syringe():
 
-    cell = {"A":1,"B":2}
+    cell = {"A":10,"B":2}
     syringe = {"A":10,"C":20}
 
-    species, cell, syringe = sync_cell_and_syringe(cell_contents=cell,
-                                                   syringe_contents=syringe)
+    species, titr, cell, syringe = sync_cell_and_syringe(cell_contents=cell,
+                                                         syringe_contents=syringe)
     
     assert np.array_equal(species,["A","B","C"])
+    assert np.array_equal(titr,["C"])
 
-    assert cell["A"] == 1
+    assert cell["A"] == 10
     assert cell["B"] == 2
     assert cell["C"] == 0
 
@@ -50,12 +51,12 @@ def test_sync_cell_and_syringe():
     assert syringe["C"] == 20
 
     with pytest.raises(ValueError):
-        species, cell, syringe = sync_cell_and_syringe(cell_contents=1,
-                                                       syringe_contents=syringe)
+        species, titr, cell, syringe = sync_cell_and_syringe(cell_contents=1,
+                                                             syringe_contents=syringe)
         
     with pytest.raises(ValueError):
-        species, cell, syringe = sync_cell_and_syringe(cell_contents=cell,
-                                                       syringe_contents=-1)
+        species, titr, cell, syringe = sync_cell_and_syringe(cell_contents=cell,
+                                                             syringe_contents=-1)
         
 
 def test__titr_constant_volume():
@@ -84,7 +85,6 @@ def test__titr_constant_volume():
     
     assert np.array_equal(out["injection"],injection_array)
     assert np.array_equal(out["volume"],[100,100,100])
-    assert np.array_equal(out["meas_vol_dilution"],[1,1,1])
     assert np.allclose(out["A"],
                        [1,
                         ((100 - 1)*1 + 10*1)/100,
@@ -124,7 +124,6 @@ def test__titr_increase_volume():
     
     assert np.array_equal(out["injection"],injection_array)
     assert np.array_equal(out["volume"],[100,101,111])
-    assert np.array_equal(out["meas_vol_dilution"],[1,1-1/100,1-10/100])
     
 
     assert np.allclose(out["A"],

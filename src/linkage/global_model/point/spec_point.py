@@ -16,6 +16,8 @@ class SpecPoint(ExperimentalPoint):
                  micro_array,
                  macro_array,
                  del_macro_array,
+                 total_volume,
+                 injection_volume,
                  obs_mask,
                  denom):
         """
@@ -38,6 +40,10 @@ class SpecPoint(ExperimentalPoint):
         del_macro_array : np.ndarray (float)
             array holding change in concentrations of all macroscopic species 
             from the syringe to this condition
+        total_volume : float
+            total volume of cell plus titrant at this point in the titration
+        injection_volume : float
+            volume of last injection
         obs_mask : np.ndarray (bool or int)
             mask that grabs microscopic species from micro_array that correspond
             to the numerator when calculating the observable
@@ -51,7 +57,9 @@ class SpecPoint(ExperimentalPoint):
                          obs_key=obs_key,
                          micro_array=micro_array,
                          macro_array=macro_array,
-                         del_macro_array=del_macro_array)
+                         del_macro_array=del_macro_array,
+                         total_volume=total_volume,
+                         injection_volume=injection_volume)
         
         self._obs_mask = obs_mask
         self._denom = denom

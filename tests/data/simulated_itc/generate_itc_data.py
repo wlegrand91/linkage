@@ -18,7 +18,7 @@ def create_fake_itc_data():
     # Create fake data that has the number of injections we want, but no sane
     # values. 
     itc_data = pd.DataFrame({"injection":2*np.ones(25),
-                             "heat":np.random.normal(0,1,25)})
+                             "obs_heat":np.random.normal(0,1,25)})
     
     # Create an experiment from the fake data where we titrate ET into an 
     # empty cell
@@ -27,8 +27,8 @@ def create_fake_itc_data():
                                       syringe_contents={"ET":5e-3},
                                       conc_to_float=None,
                                       cell_volume=280)
-    a.define_itc_observable(obs_column="heat",
-                            obs_stdev=0.1)
+    a.define_itc_observable(obs_column="obs_heat",
+                            obs_std=0.1)
     
     
     # Create an experiment from the fake data where we titrate ET into a cell
@@ -38,8 +38,8 @@ def create_fake_itc_data():
                                       syringe_contents={"ET":5e-3},
                                       conc_to_float=None,
                                       cell_volume=280)
-    b.define_itc_observable(obs_column="heat",
-                            obs_stdev=0.1)
+    b.define_itc_observable(obs_column="obs_heat",
+                            obs_std=0.1)
     
     # Create a linkage model using the CaEDTA binding model and these two 
     # experiments. 
@@ -52,9 +52,9 @@ def create_fake_itc_data():
     # Calculate the values for our model. This creates _y_calc 
     y_calc = gm.model(guesses)
 
-    # Hack for the simulation. Set y_obs and y_stdev to y_calc
+    # Hack for the simulation. Set y_obs and y_std to y_calc
     gm._y_obs = y_calc + np.random.normal(0,err,len(y_calc))
-    gm._y_stdev = np.ones(len(gm._y_obs))*err
+    gm._y_std = np.ones(len(gm._y_obs))*err
     
     # Plot results
     fig, ax = plt.subplots(1,figsize=(6,6))
@@ -80,7 +80,7 @@ def create_fake_itc_data():
 
         out = {}
         out["injection"] = np.array(inj)
-        out["heat"] = np.array(heat)
+        out["obs_heat"] = np.array(heat)
     
         out_df = pd.DataFrame(out)
     

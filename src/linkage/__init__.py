@@ -1,6 +1,6 @@
 import linkage
 from linkage.experiment import Experiment
-from linkage.organizer import GlobalModel
+from linkage.global_model import GlobalModel
 
 
 # Make a list of all classes in linkage.models

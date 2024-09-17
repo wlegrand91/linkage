@@ -101,20 +101,21 @@ class Experiment:
         # Process and clean up input experimental data
         expt_data = _load_dataframe(expt_data=expt_data)
         self._expt_data = _preprocess_df(expt_data=expt_data)
-                
+                        
         # Process and clean up cell and syringe data
-        _, cell_contents, syringe_contents = sync_cell_and_syringe(cell_contents,
-                                                                   syringe_contents)
+        out = sync_cell_and_syringe(cell_contents,syringe_contents)
+        _, titrating_species, cell_contents, syringe_contents = out
         self._initial_cell_contents = copy.deepcopy(cell_contents)
         self._syringe_contents = copy.deepcopy(syringe_contents)
-
+        self._titrating_macro_species = copy.deepcopy(titrating_species)
+            
         # Calculate the total concentrations over the experiment
         self._expt_concs = titrator(cell_contents=cell_contents,
                                     syringe_contents=syringe_contents,
                                     injection_array=np.array(self._expt_data["injection"]),
                                     cell_volume=cell_volume,
                                     constant_volume=constant_volume)
-
+        
         # Make sure conc_to_float is sane. 
         if conc_to_float is not None:
             if conc_to_float not in self._expt_concs.columns:
@@ -126,34 +127,34 @@ class Experiment:
 
     def _define_generic_observable(self,
                                    obs_column,
-                                   obs_stdev):
+                                   obs_std):
         """
-        Define observable, making sure obs_column and obs_stdev columns are 
-        sane. If obs_stdev is a float, make a new column named {obs_column}_stdev
+        Define observable, making sure obs_column and obs_std columns are 
+        sane. If obs_std is a float, make a new column named {obs_column}_std
         with the value loaded in. 
         """
             
         if obs_column not in self._expt_data.columns:
-            err = "column_name should be one of the columns in the experimental data\n"
+            err = f"obs_column '{obs_column}' should be one of the columns in the experimental data\n"
             raise ValueError(err)
 
         if obs_column == "injection":
-            err = "column_name cannot be injection\n"
+            err = "obs_column cannot be 'injection'\n"
             raise ValueError(err)
     
         # Deal with uncertainty
-        if obs_stdev in self._expt_data.columns:
-            obs_stdev_column = obs_stdev
+        if obs_std in self._expt_data.columns:
+            obs_std_column = obs_std
         else:
-            obs_stdev_column = f"{obs_column}_stdev"
+            obs_std_column = f"{obs_column}_std"
             
             try:
-                obs_stdev = float(obs_stdev)
+                obs_std = float(obs_std)
             except Exception as e:
-                err = "obs_stdev should be either the name of a column or a single value\n"
+                err = "obs_std should be either the name of a column or a single value\n"
                 raise ValueError(err) from e
             
-            self._expt_data.loc[:,obs_stdev_column] = obs_stdev
+            self._expt_data.loc[:,obs_std_column] = obs_std
 
         if obs_column in self._observables:
             w = f"obs_column '{obs_column}' was already adding. Overwriting\n"
@@ -163,11 +164,11 @@ class Experiment:
         set_to_ignore = np.isnan(self._expt_data[obs_column])
         self._expt_data.loc[set_to_ignore,"ignore_point"] = True
 
-        return obs_column, obs_stdev_column
+        return obs_column, obs_std_column
 
     def define_itc_observable(self,
                               obs_column,
-                              obs_stdev):
+                              obs_std):
         """
         Define an ITC observable for this experiment. 
         
@@ -176,22 +177,22 @@ class Experiment:
         obs_column : str
             name of column in initial dataframe that has the experimental
             observable. 
-        obs_stdev : str or float, optional
+        obs_std : str or float, optional
             If str, use as name of column in initial dataframe that has the
             standard deviation on each observation.  If float, use this single
             value as the standard deviation on all observations.  
         """
 
-        obs_column, obs_stdev_column = self._define_generic_observable(obs_column=obs_column,
-                                                                       obs_stdev=obs_stdev)
+        obs_column, obs_std_column = self._define_generic_observable(obs_column=obs_column,
+                                                                       obs_std=obs_std)
         
         self._observables[obs_column] = {"type":"itc",
-                                         "stdev_column":obs_stdev_column}
+                                         "std_column":obs_std_column}
 
 
     def define_spectroscopic_observable(self,
                                         obs_column,
-                                        obs_stdev,
+                                        obs_std,
                                         obs_microspecies,
                                         obs_macrospecies):
         """
@@ -202,7 +203,7 @@ class Experiment:
         obs_column : str
             name of column in initial dataframe that has the experimental
             observable. 
-        obs_stdev : str or float, optional
+        obs_std : str or float, optional
             If str, use as name of column in initial dataframe that has the
             standard deviation on each observation.  If float, use this single
             value as the standard deviation on all observations.  
@@ -225,8 +226,8 @@ class Experiment:
         obs_microspecies would be ["AB"] and obs_macrospecies would be "AT".     
         """
 
-        obs_column, obs_stdev_column = self._define_generic_observable(obs_column=obs_column,
-                                                                       obs_stdev=obs_stdev)
+        obs_column, obs_std_column = self._define_generic_observable(obs_column=obs_column,
+                                                                     obs_std=obs_std)
 
         if issubclass(type(obs_microspecies),str):
             obs_microspecies = [obs_microspecies]
@@ -242,7 +243,7 @@ class Experiment:
             raise ValueError(err)
 
         self._observables[obs_column] = {"type":"spec",
-                                         "stdev_column":obs_stdev_column,
+                                         "std_column":obs_std_column,
                                          "microspecies":obs_microspecies,
                                          "macrospecies":obs_macrospecies}
  
@@ -277,3 +278,7 @@ class Experiment:
     @property
     def initial_cell_contents(self):
         return self._initial_cell_contents
+    
+    @property
+    def titrating_macro_species(self):
+        return self._titrating_macro_species

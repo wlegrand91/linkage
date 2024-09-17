@@ -329,12 +329,21 @@ class BindingModel:
             list of upper bounds against which to check root.
         """
 
-        to_check = [np.isreal(roots),
-                    roots >= 0]
+        # Check for realness
+        to_check = [np.isreal(roots)]
+
+        # Check to see if root >= 0 (isclose catches values that ended up just 
+        # slightly less than zero due to numerical imprecision)
+        to_check.append(np.logical_or(roots > 0,np.isclose(roots,0)))
+
+        # Check to see if root <= lowest upper bound. (isclose for numerical
+        # imprecision)
         if len(upper_bounds) > 0:
-            to_check.append(roots <= np.min(upper_bounds))
+            min_upper = np.min(upper_bounds)
+            to_check.append(np.logical_or(roots < min_upper,
+                                          np.isclose(roots,min_upper)))
         
-        # Get real root that that has value >= 0 and below upper bounds
+        # Get all roots that meet all criteria
         mask = np.logical_and.reduce(to_check)
         solution = np.unique(roots[mask])
         
