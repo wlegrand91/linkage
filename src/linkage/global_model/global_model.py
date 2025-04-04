@@ -4,64 +4,55 @@ from linkage.global_model.point.itc_point import ITCPoint
 
 import numpy as np
 import pandas as pd
-
 import copy
 
+
 class GlobalModel:
-    """
-    This class brings together a list of experiments and a thermodynamic model
-    and generates an integrated model. This model will have the following 
-    parameters:
-    
-    + equilibrium constants from model
-    + a nuisance concentration parameter for each experiment (if requested)
-    + enthalpies for each of the model equilibria and heats of dilution for 
-      titrating species (if at least one ITC experiment is passed in)
-
-    This class also:
-    
-    + Regularizes the signal from experimental types. For example,
-      the heats from across all itc experiments will be transformed by
-      (heat - mean(all_heats))/std(all_heats), where all_heats comes from all 
-      itc experiments loaded. The same transformation will be done to each
-      spectroscopic channel. This puts all experiment types on the same scale
-      when a residual is calculated. 
-
-    + Weights each observation in each experiment by the number of
-      points in that experiment. This means that an experiment with more points 
-      will have the same weight overall contribution to the regression as an
-      experiment with fewer points. 
-    """
-
-    def __init__(self,
-                 expt_list,
-                 model_name):
+    def __init__(self, expt_list, model_name, model_spec=None):
         """
-        Initialize a global fit.
-        
+        This class integrates experimental data with thermodynamic modeling by combining 
+        a list of experiments with a specified model. The integrated model includes:
+
+        - Equilibrium constants derived from the thermodynamic model
+        - Optional nuisance concentration parameters for each experiment
+        - Enthalpies for model equilibria and heats of dilution for titrating species 
+        (when ITC experiments are included)
+
+        Key features:
+        - Signal normalization: Transforms experimental signals (e.g., ITC heats, 
+        spectroscopic channels) using (value - mean)/std across all experiments of 
+        the same type, ensuring consistent scaling for residual calculations
+        - Balanced weighting: Weights observations inversely to the number of data 
+        points in each experiment, ensuring equal contribution regardless of 
+        experiment size
+
         Parameters
         ----------
         expt_list : list
-            list of experiments with loaded observations
+            List of experiments with loaded observations
         model_name : str
-            name of model to use to calculate concentrations
+            Name of the thermodynamic model to use for concentration calculations
+        model_spec : str, optional
+            Model specification string for generic models. If None, a manually defined 
+            model class is assumed.
         """
 
         # Store model name and experiment list
         self._model_name = model_name
         self._expt_list = copy.deepcopy(expt_list)
-    
+        self._model_spec = model_spec
+
         # Load the model
         self._load_model()
 
-        # Load experimental data. The final output of this 
+        # Load experimental data
         self._get_expt_std_scalar()
         self._get_expt_normalization()
         self._load_observables()
 
         self._get_enthalpy_param()
         self._get_expt_fudge()
-        
+
         # Create points that allow calculation of observations
         self._build_point_map()
 
@@ -69,16 +60,16 @@ class GlobalModel:
         """
         Load and initialize the thermodynamic linkage model. 
         """
-        
+
         # Make a list of all classes in linkage.models
         available_models = {}
         for k in linkage.models.__dict__:
             if k.startswith("_"):
                 continue
-        
+
             if issubclass(type(linkage.models.__dict__[k]),type):
                 available_models[k] = linkage.models.__dict__[k]
-        
+
         # Make sure the model the user specified is found 
         if self._model_name not in available_models:
             err = f"model_name '{self._model_name}' not recognized. It should be one of:\n"
@@ -86,9 +77,17 @@ class GlobalModel:
                 err += f"    {k}\n"
             err += "\n"
             raise ValueError(err)
-        
+
         # Initialize binding model
-        self._bm = available_models[self._model_name]()
+        ModelClass = available_models[self._model_name]
+        if self._model_name == "GenericBindingModel":
+            if self._model_spec is None:
+                raise ValueError("model_spec must be provided for GenericBindingModel")
+            self._bm = ModelClass(model_spec=self._model_spec)
+        else:
+            if self._model_spec is not None:
+                print("Warning: model_spec provided but not used for non-generic model")
+            self._bm = ModelClass()
 
         # Record names of the model parameters
         self._parameter_names = []
@@ -100,7 +99,7 @@ class GlobalModel:
         # Record indexes spanning parameter guesses
         self._bm_param_start_idx = 0
         self._bm_param_end_idx = len(self._parameter_names) - 1
-            
+
     def _get_expt_std_scalar(self):
         """
         Second, we normalize each experiment to the number of points in that 
@@ -109,7 +108,7 @@ class GlobalModel:
             theta = num_obs/sum(num_obs)
             y_std = y_std*(1 - theta + np.max(theta))
         """
-        
+
         # Number of points contributed by each experiment
         points_per_expt = []
         for expt in self._expt_list:
@@ -127,7 +126,6 @@ class GlobalModel:
         theta = points_per_expt/np.sum(points_per_expt)
         self._expt_std_scalar = 1 - theta + np.max(theta)
 
-    
     def _get_expt_normalization(self):
         """
         First, each unique 'obs' seen (e.g. heat, cd222, etc.) is normalized to
@@ -145,19 +143,19 @@ class GlobalModel:
         for expt in self._expt_list:
 
             for obs in expt.observables:
-                
+
                 keep = np.logical_not(expt.expt_data["ignore_point"])
                 obs_values = list(expt.expt_data.loc[keep,obs])
                 if obs not in obs_values_seen:
                     obs_values_seen[obs] = []
-                
+
                 obs_values_seen[obs].extend(obs_values)
 
         # Create a normalization_params dictionary that keys obs to the mean and
         # std of that obs. 
         self._normalization_params = {}
         for obs in obs_values_seen:
-            
+
             values = np.array(obs_values_seen[obs])
             values = values[np.logical_not(np.isnan(values))]
             if len(values) == 0:
@@ -166,7 +164,7 @@ class GlobalModel:
             else:
                 mean_value = np.mean(values)
                 std_value = np.std(values)
-            
+
             self._normalization_params[obs] = [mean_value,std_value]
 
     def _load_observables(self):
@@ -195,7 +193,7 @@ class GlobalModel:
             not_in_expt = set(self._bm.macro_species) - set(expt.expt_concs.columns)
             for missing in not_in_expt:
                 expt.add_expt_conc_column(new_column=missing)
-        
+
             # For each observable
             for obs in expt.observables:
 
@@ -239,25 +237,24 @@ class GlobalModel:
         self._y_norm_mean = np.array(self._y_norm_mean)
         self._y_norm_std = np.array(self._y_norm_std)
         self._y_std_scalar = np.array(self._y_std_scalar)
-        
+
         self._y_obs_normalized = np.array(self._y_obs_normalized)
         self._y_std_normalized = np.array(self._y_std_normalized)
 
-
     def _get_enthalpy_param(self):
         """
-        Deal with enthalpy terms if needed. 
-        
+        Deal with enthalpy terms if needed.
+
         Enthalpy change over a titration step is determined by change in
-        the concentration of microscopic species from the equilibrium. 
-        Ideally, there is a single species on one side of the reaction, 
+        the concentration of microscopic species from the equilibrium.
+        Ideally, there is a single species on one side of the reaction,
         so we can simply measure the change in the concentration of that
-        species. This block of code figures out which side of the 
+        species. This block of code figures out which side of the
         equilibrium has fewer species and declares that the "product" for
         accounting purposes. dh_sign records whether this is the right
-        side of the reaction (forward) with +1 or the left side of the 
-        reaction (backward) with -1. By applying dh_sign, the final 
-        enthalpy is always correct relative to the reaction definition. 
+        side of the reaction (forward) with +1 or the left side of the
+        reaction (backward) with -1. By applying dh_sign, the final
+        enthalpy is always correct relative to the reaction definition.
         """
 
         # Look for an ITC experiment
@@ -269,18 +266,18 @@ class GlobalModel:
                     break
 
         # If we do not need enthalpies, return without doing anything
-        if not need_enthalpies:    
-            return 
+        if not need_enthalpies:
+            return
 
         # Index of first enthalpy
         self._dh_param_start_idx = len(self._parameter_names)
-        
+
         # ------------------------------------------------------------------
         # Reaction enthalpies
 
         self._dh_sign = []
         self._dh_product_mask = []
-        
+
         # Create an enthalpy term (with associated dh_sign and dh_product_mask)
         # for each equilibrium. 
         for k in self._bm.equilibria:
@@ -318,7 +315,7 @@ class GlobalModel:
                 if expt.observables[obs]["type"] == "itc":
                     to_dilute.extend(expt.titrating_macro_species)
         to_dilute = list(set(to_dilute))
-        
+
         # Add heat of dilution parameters to the parameter array. Construct
         # the dilution_mask to indicate which macro species these 
         # correspond to. 
@@ -332,10 +329,10 @@ class GlobalModel:
                 dh_dilution_mask.append(False)
 
         self._dh_dilution_mask = np.array(dh_dilution_mask,dtype=bool)
-                
+
         # Last enthalpy index is last entry
         self._dh_param_end_idx = len(self._parameter_names)  - 1
-    
+
     def _get_expt_fudge(self):
         """
         Fudge parameters account for uncertainty in one of the total
@@ -346,7 +343,7 @@ class GlobalModel:
         # Fudge parameters will be last parameters in the guess array   
         self._fudge_list = []
         for expt_counter, expt in enumerate(self._expt_list):
-            
+
             # If an experiment has a conc_to_float specified, create a parameter
             # and initialize it. 
             if expt.conc_to_float:
@@ -354,50 +351,49 @@ class GlobalModel:
                 param_name = f"nuisance_expt_{expt_counter}_{expt.conc_to_float}_fudge"
                 self._parameter_names.append(param_name)
                 self._parameter_guesses.append(1.0)
-                
+
                 fudge_species_index = np.where(self._bm.macro_species == expt.conc_to_float)[0][0]
                 fudge_value_index = len(self._parameter_names) - 1
-                
+
                 self._fudge_list.append((fudge_species_index,fudge_value_index))
-                        
+
             else:
                 self._fudge_list.append(None)
-    
 
     def _add_point(self,point_idx,expt_idx,obs):
 
         # Information about observable and experimental data
         expt = self._expt_list[expt_idx]
         obs_info = expt.observables[obs]
-        
-        data_idx = expt.expt_data.index[point_idx]
-        total_volume = float(expt.expt_concs.loc[data_idx,"volume"])
-        injection_volume = float(expt.expt_data.loc[data_idx,"injection"])
 
-        if expt.expt_data.loc[data_idx,"ignore_point"]:
+        data_idx = expt.expt_data.index[point_idx]
+        total_volume = float(expt.expt_concs.loc[data_idx, "volume"])
+        injection_volume = float(expt.expt_data.loc[data_idx, "injection"])
+
+        if expt.expt_data.loc[data_idx, "ignore_point"]:
             return
-            
-        point_kwargs = {"idx":point_idx,
-                        "expt_idx":expt_idx,
-                        "obs_key":obs,
-                        "micro_array":self._micro_arrays[-1],
-                        "macro_array":self._macro_arrays[-1],
-                        "del_macro_array":self._del_macro_arrays[-1],
-                        "total_volume":total_volume,
-                        "injection_volume":injection_volume}
+
+        point_kwargs = {"idx": point_idx,
+                        "expt_idx": expt_idx,
+                        "obs_key": obs,
+                        "micro_array": self._micro_arrays[-1],
+                        "macro_array": self._macro_arrays[-1],
+                        "del_macro_array": self._del_macro_arrays[-1],
+                        "total_volume": total_volume,
+                        "injection_volume": injection_volume}
 
         if obs_info["type"] == "spec":
 
-            obs_mask = np.isin(self._bm.micro_species,obs_info["microspecies"])
+            obs_mask = np.isin(self._bm.micro_species, obs_info["microspecies"])
             denom = np.where(self._bm.macro_species == obs_info["macrospecies"])[0][0]
 
             point_kwargs["obs_mask"] = obs_mask
             point_kwargs["denom"] = denom
 
             pt = SpecPoint(**point_kwargs)
-            
+
         elif obs_info["type"] == "itc":
-            
+
             point_kwargs["dh_param_start_idx"] = self._dh_param_start_idx
             point_kwargs["dh_param_end_idx"] = self._dh_param_end_idx + 1
             point_kwargs["dh_sign"] = self._dh_sign
@@ -414,10 +410,8 @@ class GlobalModel:
         self._points.append(pt)
 
     def _build_point_map(self):
-
-        # Lists of arrays that can be referenced by all points in the 
-        # experiments. There is an entry for each experiment. The values in 
-        # these arrays are set globally. 
+        """
+        """
         self._ref_macro_arrays = []
         self._macro_arrays = []
         self._micro_arrays = []
@@ -428,21 +422,22 @@ class GlobalModel:
         self._points = []
 
         for expt_counter, expt in enumerate(self._expt_list):
-
-            # Each experiment has:
-            
             # 1. An array of microscopic species concentrations
             self._micro_arrays.append(np.ones((len(expt.expt_data),
-                                                len(self._bm.micro_species)),
-                                               dtype=float)*np.nan)
+                                            len(self._bm.micro_species)),
+                                            dtype=float)*np.nan)
 
-            # 2. An array of macroscopic species concentrations
-            macro_array = np.array(expt.expt_concs.loc[:,self._bm.macro_species],
-                                   dtype=float).copy()
+            # 2s. An array of macroscopic species concentrations
+            
+            # Create array maintaining the exact order specified by binding model
+            macro_array = np.zeros((len(expt.expt_data), len(self._bm.macro_species)))
+            for i, species in enumerate(self._bm.macro_species):
+                macro_array[:,i] = expt.expt_concs[species].values
+            
             self._ref_macro_arrays.append(macro_array)
             self._macro_arrays.append(self._ref_macro_arrays[-1].copy())
-
-            # 3. An array of the change in macro species relative to syringe. 
+            
+            # 3. An array of the change in macro species relative to syringe
             syringe_concs = []
             for s in self._bm.macro_species:
                 if s in expt.syringe_contents:
@@ -450,24 +445,20 @@ class GlobalModel:
                 else:
                     syringe_concs.append(0.0)
             
-            syringe_concs = np.array(syringe_concs,dtype=float)
+            syringe_concs = np.array(syringe_concs, dtype=float)
+            
             self._expt_syringe_concs.append(syringe_concs)
             self._del_macro_arrays.append(syringe_concs - macro_array)
                     
             # For each observable
             for obs in expt.observables:
-
                 # Go through each experimental point
                 for i in range(len(expt.expt_data)):
-
-                    # Add that point to the list of all points. The final list 
-                    # of points will exactly match the values in y_obs, y_std,
-                    # etc.
                     self._add_point(point_idx=i,
-                                    expt_idx=expt_counter,
-                                    obs=obs)
+                                expt_idx=expt_counter,
+                                obs=obs)
             
-    def model_normalized(self,parameters):
+    def model_normalized(self, parameters):
         """
         Model output where each experiment is normalized to its experimental
         mean, standard deviation, and number of experimental points. This 
@@ -631,6 +622,68 @@ class GlobalModel:
         return self._bm.micro_species
     
     @property
+    def final_ct(self):
+        """
+        Get the final conservation of mass polynomial if using a GenericBindingModel.
+        
+        Returns
+        -------
+        sympy expression or None
+            The final conservation of mass polynomial if using GenericBindingModel,
+            None otherwise.
+        """
+        if self._model_name == "GenericBindingModel":
+            return self._bm.final_ct
+        return None
+    
+    @property
+    def model_spec(self):
+        """
+        Get the model specification string if using a GenericBindingModel.
+        
+        Returns
+        -------
+        str or None
+            The model specification string if using GenericBindingModel,
+            None otherwise.
+        """
+        if self._model_name == "GenericBindingModel":
+            return self._model_spec
+        return None
+    
+    @property
+    def simplified_equations(self):
+        """
+        Gets the simplified equilibria equations if using a GenericBindingModel
+
+        Returns
+        -------
+        dict or None
+            Dictionary of simplified equilibrium equations where keys are the species symbols
+            and values are their corresponding simplified sympy expressions if using GenericBindingModel,
+            None otherwise.
+        """
+        if self._model_name == "GenericBindingModel":
+            return self._bm._simplify_equations(self._bm._parse_equilibrium_equations())
+        return None
+    
+    @property
+    def solved_vars(self):
+        """
+        Gets the solved variables if using a GenericBindingModel.
+        These are the variables solved from conservation equations.
+
+        Returns
+        -------
+        dict or None
+            Dictionary mapping variable symbols to their solved expressions if using GenericBindingModel,
+            None otherwise.
+        """
+        if self._model_name == "GenericBindingModel":
+            return self._bm.solved_vars
+        return None
+    
+    @property
     def as_df(self):
 
         out = {"expt_id":[],
@@ -681,4 +734,15 @@ class GlobalModel:
 
         return pd.DataFrame(out)
 
+    @property
+    def concentrations_df(self):
+        """
+        Get the concentrations DataFrame from the underlying binding model.
         
+        Returns
+        -------
+        pandas.DataFrame    
+            DataFrame containing the most recent concentration calculations
+            from the binding model.
+        """
+        return self._bm.concentrations_df

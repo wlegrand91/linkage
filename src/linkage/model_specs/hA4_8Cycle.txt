@@ -1,0 +1,16 @@
+equilibria:
+    E + C -> EC; KE
+    A + C -> AC1; K1
+    AC1 + C -> AC2; K2
+    AC2 + C -> AC3; K3
+    AC3 + C -> AC4; K4
+    I + C -> IC1; KI1
+    IC1 + C -> IC2; KI2
+    A -> I; KT1
+    AC1 -> IC1; KT2
+    AC2 -> IC2; KT3
+
+species:
+    ET = E + EC
+    AT = I + 2*IC1 + IC2 + A + 2*AC1 + AC2 + 2*AC3 + AC4
+    CT = C + EC + 2*AC1 + 2*AC2 + 6*AC3 + 4*AC4 + 2*IC1 + 2*IC2
