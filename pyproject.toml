@@ -21,7 +21,10 @@ dependencies = [
   "pandas",
   "matplotlib",
   "openpyxl",
-  "dataprob"
+  "dataprob",
+  "sympy",
+  "scipy",
+  "copy"
 ]
 
 requires-python = ">=3.10"
