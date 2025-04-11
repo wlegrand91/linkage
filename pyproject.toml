@@ -24,7 +24,6 @@ dependencies = [
   "dataprob",
   "sympy",
   "scipy",
-  "copy"
 ]
 
 requires-python = ">=3.10"
