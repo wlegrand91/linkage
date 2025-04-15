@@ -2,5 +2,5 @@ equilibria:
     E + C -> EC; KE
 
 species:
-    ET = E + EC
     CT = C + EC
+    ET = E + EC
