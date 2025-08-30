@@ -74,7 +74,7 @@ class SixStateEDTA(BindingModel):
             AC3, AC4, EC).
         """
 
-        KI, KE, K1, K2, K3, K4 = param_array
+        KI, KE, K1, K2, K3, K4 = np.exp(param_array)
         AT, CT, ET = macro_array
         
         # Get the free calcium concentration
