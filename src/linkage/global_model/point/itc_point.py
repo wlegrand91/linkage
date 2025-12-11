@@ -1,4 +1,3 @@
-
 from linkage.global_model.point.experimental_point import ExperimentalPoint
 
 import numpy as np
@@ -100,6 +99,8 @@ class ITCPoint(ExperimentalPoint):
         parameters : np.ndarray (float)
             fit parameters (guesses array)
         """
+        if self._idx == 0:
+            return 0.0
 
         dh_array = parameters[self._dh_first:self._dh_last]
         
@@ -135,3 +136,53 @@ class ITCPoint(ExperimentalPoint):
         total_heat += np.sum(dil_heats*molar_change)*self._injection_volume
         
         return total_heat
+    
+    def get_d_y_d_concs(self):
+        """
+        Returns a placeholder for d(heat)/d(micro_concs).
+
+        The actual logic for this derivative is complex as it depends on both
+        the current and previous concentration states (C_after and C_before).
+        This is handled directly in the `GlobalModel.jacobian_normalized`
+        method for simplicity and to avoid passing many parameters.
+        """
+        return np.zeros(self._micro_array.shape[1], dtype=float)
+
+    def get_d_y_d_other_params(self, parameters):
+        """
+        Calculate the derivative of the heat with respect to any "other"
+        parameters, which for ITC are the enthalpies and heats of dilution.
+
+        Returns
+        -------
+        dict
+            A dictionary where keys are parameter *indices* and values are
+            their derivatives.
+        """
+        deriv_dict = {}
+        if self._idx == 0:
+            return deriv_dict
+
+        # 1. Derivatives with respect to reaction enthalpies (dH_params)
+        for i in range(len(self._dh_product_mask)):
+            param_index = self._dh_first + i
+            # d(heat)/d(dH_i) = V * sign_i * mean(C_after - C_before*dil)
+            
+            C_before = self._micro_array[self._idx - 1, self._dh_product_mask[i]]
+            C_after  = self._micro_array[self._idx, self._dh_product_mask[i]]
+            del_C = C_after - C_before * self._meas_vol_dilution
+            dC = np.mean(del_C)
+            
+            deriv_val = self._total_volume * self._dh_sign[i] * dC
+            deriv_dict[param_index] = deriv_val
+
+        # 2. Derivatives with respect to heats of dilution (dil_params)
+        molar_change = self._del_macro_array[self._idx, self._dh_dilution_mask]
+        dil_param_indices = np.arange(self._dil_first, self._dil_last)
+        
+        for i, param_index in enumerate(dil_param_indices):
+            # d(heat)/d(dil_heat_i) = V_inj * molar_change_i
+            deriv_val = self._injection_volume * molar_change[i]
+            deriv_dict[param_index] = deriv_val
+
+        return deriv_dict

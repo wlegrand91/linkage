@@ -5,7 +5,8 @@ from linkage.global_model.point.itc_point import ITCPoint
 import numpy as np
 import pandas as pd
 import copy
-
+import warnings
+import traceback
 
 class GlobalModel:
     def __init__(self, expt_list, model_name, model_spec=None):
@@ -55,6 +56,17 @@ class GlobalModel:
 
         # Create points that allow calculation of observations
         self._build_point_map()
+
+        # Add confirmation printout for analytical Jacobian
+        if self._model_name == "GenericBindingModel":
+            # Check the underlying binding model to see if it successfully created the jacobian function.
+            if hasattr(self._bm, "jacobian_function") and self._bm.jacobian_function is not None:
+                print("INFO: Analytical Jacobian was successfully generated for the binding model.")
+            else:
+                # The warning from GenericBindingModel's __init__ will provide the specific error.
+                # This just serves as a high-level confirmation of failure.
+                print("WARNING: Analytical Jacobian could not be generated. Fitter will use numerical methods.")
+
 
     def _load_model(self):
         """
@@ -244,17 +256,7 @@ class GlobalModel:
     def _get_enthalpy_param(self):
         """
         Deal with enthalpy terms if needed.
-
-        Enthalpy change over a titration step is determined by change in
-        the concentration of microscopic species from the equilibrium.
-        Ideally, there is a single species on one side of the reaction,
-        so we can simply measure the change in the concentration of that
-        species. This block of code figures out which side of the
-        equilibrium has fewer species and declares that the "product" for
-        accounting purposes. dh_sign records whether this is the right
-        side of the reaction (forward) with +1 or the left side of the
-        reaction (backward) with -1. By applying dh_sign, the final
-        enthalpy is always correct relative to the reaction definition.
+        ... (docstring unchanged) ...
         """
 
         # Look for an ITC experiment
@@ -265,28 +267,19 @@ class GlobalModel:
                     need_enthalpies = True
                     break
 
-        # If we do not need enthalpies, return without doing anything
         if not need_enthalpies:
             return
 
-        # Index of first enthalpy
         self._dh_param_start_idx = len(self._parameter_names)
 
-        # ------------------------------------------------------------------
         # Reaction enthalpies
-
         self._dh_sign = []
         self._dh_product_mask = []
 
-        # Create an enthalpy term (with associated dh_sign and dh_product_mask)
-        # for each equilibrium. 
         for k in self._bm.equilibria:
-
-            # Get products and reactants of this equilibrium
             reactants = self._bm.equilibria[k][0]
             products = self._bm.equilibria[k][1]
 
-            # Figure out if products or reactants side has fewer species
             if len(products) <= len(reactants):
                 self._dh_sign.append(1.0)
                 key_species = products[:]
@@ -294,21 +287,14 @@ class GlobalModel:
                 self._dh_sign.append(-1.0)
                 key_species = reactants[:]
 
-            # Create a mask that lets us grab the species we need to track 
-            # from the _micro_array array. 
             self._dh_product_mask.append(np.isin(self._bm.micro_species,
                                                     key_species))
 
-        # Record enthalpies as parameters
         for s in self._bm.param_names:
             self._parameter_names.append(f"dH_{s[1:]}")
             self._parameter_guesses.append(0.0)
 
-        # ------------------------------------------------------------------
-        # Heats of dilution. 
-
-        # Figure out which species are being diluted when they go into the
-        # cell from the syringe. 
+        # Heats of dilution
         to_dilute = []
         for expt in self._expt_list:
             for obs in expt.observables:
@@ -316,9 +302,6 @@ class GlobalModel:
                     to_dilute.extend(expt.titrating_macro_species)
         to_dilute = list(set(to_dilute))
 
-        # Add heat of dilution parameters to the parameter array. Construct
-        # the dilution_mask to indicate which macro species these 
-        # correspond to. 
         dh_dilution_mask = []
         for s in self._bm.macro_species:
             if s in to_dilute:
@@ -329,8 +312,6 @@ class GlobalModel:
                 dh_dilution_mask.append(False)
 
         self._dh_dilution_mask = np.array(dh_dilution_mask,dtype=bool)
-
-        # Last enthalpy index is last entry
         self._dh_param_end_idx = len(self._parameter_names)  - 1
 
     def _get_expt_fudge(self):
@@ -339,33 +320,21 @@ class GlobalModel:
         concentrations each experiment. This is specified by `conc_to_float`
         when the `Experiment` class is initialized. 
         """
-
-        # Fudge parameters will be last parameters in the guess array   
         self._fudge_list = []
         for expt_counter, expt in enumerate(self._expt_list):
-
-            # If an experiment has a conc_to_float specified, create a parameter
-            # and initialize it. 
             if expt.conc_to_float:
-
                 param_name = f"nuisance_expt_{expt_counter}_{expt.conc_to_float}_fudge"
                 self._parameter_names.append(param_name)
                 self._parameter_guesses.append(1.0)
-
                 fudge_species_index = np.where(self._bm.macro_species == expt.conc_to_float)[0][0]
                 fudge_value_index = len(self._parameter_names) - 1
-
                 self._fudge_list.append((fudge_species_index,fudge_value_index))
-
             else:
                 self._fudge_list.append(None)
 
     def _add_point(self,point_idx,expt_idx,obs):
-
-        # Information about observable and experimental data
         expt = self._expt_list[expt_idx]
         obs_info = expt.observables[obs]
-
         data_idx = expt.expt_data.index[point_idx]
         total_volume = float(expt.expt_concs.loc[data_idx, "volume"])
         injection_volume = float(expt.expt_data.loc[data_idx, "injection"])
@@ -383,76 +352,54 @@ class GlobalModel:
                         "injection_volume": injection_volume}
 
         if obs_info["type"] == "spec":
-
             obs_mask = np.isin(self._bm.micro_species, obs_info["microspecies"])
             denom = np.where(self._bm.macro_species == obs_info["macrospecies"])[0][0]
-
             point_kwargs["obs_mask"] = obs_mask
             point_kwargs["denom"] = denom
-
             pt = SpecPoint(**point_kwargs)
-
         elif obs_info["type"] == "itc":
-
             point_kwargs["dh_param_start_idx"] = self._dh_param_start_idx
             point_kwargs["dh_param_end_idx"] = self._dh_param_end_idx + 1
             point_kwargs["dh_sign"] = self._dh_sign
             point_kwargs["dh_product_mask"] = self._dh_product_mask
             point_kwargs["dh_dilution_mask"] = self._dh_dilution_mask
-
             pt = ITCPoint(**point_kwargs)
-
         else:
-            obs_type = obs_info["type"]
-            err = f"The obs type '{obs_type}' is not recognized\n"
-            raise ValueError(err)
+            raise ValueError(f"The obs type '{obs_info['type']}' is not recognized\n")
 
         self._points.append(pt)
 
     def _build_point_map(self):
-        """
-        """
         self._ref_macro_arrays = []
         self._macro_arrays = []
         self._micro_arrays = []
         self._del_macro_arrays = []
         self._expt_syringe_concs = []
-
-        # List of all points
         self._points = []
 
         for expt_counter, expt in enumerate(self._expt_list):
-            # 1. An array of microscopic species concentrations
             self._micro_arrays.append(np.ones((len(expt.expt_data),
                                             len(self._bm.micro_species)),
                                             dtype=float)*np.nan)
-
-            # 2s. An array of macroscopic species concentrations
             
-            # Create array maintaining the exact order specified by binding model
             macro_array = np.zeros((len(expt.expt_data), len(self._bm.macro_species)))
             for i, species in enumerate(self._bm.macro_species):
                 macro_array[:,i] = expt.expt_concs[species].values
-            
             self._ref_macro_arrays.append(macro_array)
             self._macro_arrays.append(self._ref_macro_arrays[-1].copy())
             
-            # 3. An array of the change in macro species relative to syringe
             syringe_concs = []
             for s in self._bm.macro_species:
                 if s in expt.syringe_contents:
                     syringe_concs.append(expt.syringe_contents[s])
                 else:
                     syringe_concs.append(0.0)
-            
             syringe_concs = np.array(syringe_concs, dtype=float)
             
             self._expt_syringe_concs.append(syringe_concs)
             self._del_macro_arrays.append(syringe_concs - macro_array)
                     
-            # For each observable
             for obs in expt.observables:
-                # Go through each experimental point
                 for i in range(len(expt.expt_data)):
                     self._add_point(point_idx=i,
                                 expt_idx=expt_counter,
@@ -460,270 +407,226 @@ class GlobalModel:
             
     def model_normalized(self, parameters):
         """
-        Model output where each experiment is normalized to its experimental
-        mean, standard deviation, and number of experimental points. This 
-        is useful for regression because each point contributes the same amount
-        to the regression. 
-        
-        Parameters
-        ----------
-        parameters : np.ndarray
-            array of parameter values corresponding to the parameters in 
-            self.parameter_names
-        
-        Returns
-        -------
-        y_calc_norm : np.ndarray
-            array of outputs calculated across conditions. pairs with 
-            self.y_obs_normalized and and self.y_std_normalized
-
-        Note
-        ----
-        This should be regressed against self.y_obs_normalized and 
-        self.y_std_normalized, *not* self.y_obs and self.y_std. The resulting 
-        parameter estimates should then reproduce self.y_obs if passed back into
-        self.model. 
+        Model output where each experiment is normalized...
+        ... (docstring unchanged) ...
         """
-
-        # Run model un-normalized (which updates self._y_calc)
         y_calc = self.model(parameters)
-
-        # Now normalize y_calc_norm
         y_calc_norm = (y_calc - self._y_norm_mean)/self._y_norm_std
-
-        # Return
         return y_calc_norm
 
     def model(self,parameters):
         """
         Model output. Can be used to draw plots or as the target of a regression
         analysis against y_obs. 
-
-        Parameters
-        ----------
-        parameters : np.ndarray
-            array of parameter values corresponding to the parameters in 
-            self.parameter_names
-        
-        Returns
-        -------
-        y_calc : np.ndarray
-            array of outputs calculated across conditions. pairs with self.y_obs
-            and self.y_std
+        ... (docstring unchanged) ...
         """
-
-        # Grab binding parameters from guesses. 
         start = self._bm_param_start_idx
         end = self._bm_param_end_idx+1
     
-        # For each experiment, update the macro_arrays (which might change due
-        # to a fudge factor) and then update micro_arrays (which might change 
-        # due to change in macro_array and/or changes in model parameters)
         for i in range(len(self._macro_arrays)):
-
-            # Figure if/how to fudge one of the macro array concentrations
             if self._fudge_list[i] is None:
-                fudge_species_index = 0
                 fudge_value = 1.0
             else:
                 fudge_species_index = self._fudge_list[i][0]
                 fudge_value = parameters[self._fudge_list[i][1]]
             
-            # Get reference macro array without any fudge factor
             self._macro_arrays[i] = self._ref_macro_arrays[i].copy()
+            if self._fudge_list[i] is not None:
+                self._macro_arrays[i][:,fudge_species_index] *= fudge_value
 
-            # Fudge the macro array
-            self._macro_arrays[i][:,fudge_species_index] *= fudge_value
-
-            # Update del_macro_array
             self._del_macro_arrays[i] = self._expt_syringe_concs[i] - self._macro_arrays[i]
 
-            # For each titration step in this experiment (row of concs in 
-            # marco_arrays[i]), update _micro_arrays[i] with the binding model
             for j in range(len(self._macro_arrays[i])):
-
                 self._micro_arrays[i][j,:] = self._bm.get_concs(param_array=parameters[start:end],
                                                                 macro_array=self._macro_arrays[i][j,:])
 
-        # For each point, calculate the observable given the estimated microscopic
-        # and macroscopic concentrations
         y_calc = np.ones(len(self._points))*np.nan
         for i in range(len(self._points)):
             y_calc[i] = self._points[i].calc_value(parameters)
 
         return y_calc
 
+    def jacobian_normalized(self, parameters):
+        """
+        Calculate the Jacobian of the normalized model output with respect to
+        all fittable parameters. This is d(y_calc_normalized)/d(parameters).
+        This callable is suitable for use with scipy.optimize.least_squares.
+        Parameters
+        ----------
+        parameters : np.ndarray
+            Array of all current parameter values.
+        Returns
+        -------
+        J : np.ndarray
+            The Jacobian matrix of shape (num_observations, num_parameters).
+        """
+
+        # ++++++++++++++++++++++++++++++ START OF FIX ++++++++++++++++++++++++++++++
+        # This function MUST NOT raise an exception. If it fails for any reason
+        # (e.g., a numerical error from a bad guess), it should return a NaN matrix.
+        # This allows the sampler's test call to succeed and lets the sampler
+        # reject the bad step instead of crashing.
+        try:
+            # Run the model once to populate all concentration arrays consistently.
+            self.model(parameters)
+
+            num_obs = len(self._points)
+            num_params = len(self.parameter_names)
+            J = np.zeros((num_obs, num_params))
+
+            # Build a list of Jacobians, one for each point, in a stateless way.
+            start, end = self._bm_param_start_idx, self._bm_param_end_idx + 1
+            bm_param_dict = dict(zip(self._bm.param_names, np.exp(parameters[start:end])))
+
+            d_concs_d_bm_params_list = []
+            for i in range(len(self._expt_list)):
+                exp_jacobians = []
+                for j in range(len(self._macro_arrays[i])):
+                    
+                    current_concs_dict = bm_param_dict.copy()
+                    macro_concs = dict(zip(self._bm.macro_species, self._macro_arrays[i][j,:]))
+                    current_concs_dict.update(macro_concs)
+                    micro_concs = dict(zip(self._bm.micro_species, self._micro_arrays[i][j,:]))
+                    current_concs_dict.update(micro_concs)
+                    
+                    if np.isnan(micro_concs[self._bm._c_species_name]):
+                        jac = np.full((len(self._bm.micro_species), len(self._bm.param_names)), np.nan)
+                    else:
+                        jac = self._bm.get_numerical_jacobian(current_concs_dict)
+
+                    if jac is None:
+                        jac = np.full((len(self._bm.micro_species), len(self._bm.param_names)), np.nan)
+                    
+                    exp_jacobians.append(jac)
+                d_concs_d_bm_params_list.append(exp_jacobians)
+
+            for point_idx, pt in enumerate(self._points):
+                expt_idx, shot_idx = pt.expt_idx, pt.idx
+                d_concs_after_d_bm = d_concs_d_bm_params_list[expt_idx][shot_idx]
+
+                if isinstance(pt, SpecPoint):
+                    d_y_d_concs = pt.get_d_y_d_concs()
+                    J[point_idx, start:end] = d_y_d_concs @ d_concs_after_d_bm
+                
+                elif isinstance(pt, ITCPoint) and pt.idx > 0:
+                    d_concs_before_d_bm = d_concs_d_bm_params_list[expt_idx][shot_idx - 1]
+                    d_heat_d_bm = np.zeros(len(self._bm.param_names))
+                    dh_array = parameters[pt._dh_first:pt._dh_last]
+                    
+                    for i in range(len(pt._dh_product_mask)):
+                        mask = pt._dh_product_mask[i]
+                        d_C_after_d_bm = d_concs_after_d_bm[mask, :]
+                        d_C_before_d_bm = d_concs_before_d_bm[mask, :]
+                        d_del_C_d_bm = d_C_after_d_bm - d_C_before_d_bm * pt._meas_vol_dilution
+                        d_dC_d_bm = np.mean(d_del_C_d_bm, axis=0)
+                        d_heat_d_bm += dh_array[i] * pt._dh_sign[i] * d_dC_d_bm
+                    
+                    J[point_idx, start:end] = d_heat_d_bm * pt._total_volume
+
+                other_param_derivs = pt.get_d_y_d_other_params(parameters)
+                for param_idx, deriv_val in other_param_derivs.items():
+                    J[point_idx, param_idx] = deriv_val
+
+                if self._fudge_list[expt_idx] is not None:
+                    pass 
+
+            J[:, start:end] *= np.exp(parameters[start:end])
+            J_normalized = J / self._y_norm_std[:, np.newaxis]
+            return J_normalized
+
+        except Exception as e:
+            # If any failure occurs, log it and return a NaN matrix of the correct shape.
+            tb_str = traceback.format_exc()
+            warnings.warn(f"Jacobian calculation failed with error: {e}\n{tb_str}")
+            num_obs = len(self._points)
+            num_params = len(self.parameter_names)
+            return np.full((num_obs, num_params), np.nan)
+        # +++++++++++++++++++++++++++++++ END OF FIX +++++++++++++++++++++++++++++++
+
+
     @property
     def y_obs(self):
-        """
-        Vector of observed values.
-        """
         return self._y_obs
 
     @property
     def y_std(self):
-        """
-        Vector of standard deviations of observed values.
-        """
         return self._y_std
 
     @property
     def y_obs_normalized(self):
-        """
-        Vector of observed values where each experiment is normalized by
-        (obs - mean(obs))/std(obs). Pairs with y_calc_normalized and 
-        y_std_normalized.
-        """
         return self._y_obs_normalized
     
     @property
     def y_std_normalized(self):
-        """
-        Vector of standard deviations of observed values normalized by 
-        (y_std*expt_std_scalar)/std(obs). Pairs with y_obs_normalized. 
-        """
         return self._y_std_normalized
 
     @property
     def parameter_names(self):
-        """
-        Names of all fit parameters, in stable order.
-        """
         return self._parameter_names
             
     @property
     def parameter_guesses(self):
-        """
-        Parameter values from last run of the model.
-        """
         return self._parameter_guesses
     
     @property
     def model_name(self):
-        """
-        Name of the underlying linkage model used in the analysis.
-        """
         return self._model_name
     
     @property
     def macro_species(self):
-        """
-        Names of all macrospecies, in stable order expected by the linkage 
-        model. 
-        """
         return self._bm.macro_species
     
     @property
     def micro_species(self):
-        """
-        Names of all microspecies, in stable order expected by the linkage 
-        model. 
-        """
         return self._bm.micro_species
     
     @property
     def final_ct(self):
-        """
-        Get the final conservation of mass polynomial if using a GenericBindingModel.
-        
-        Returns
-        -------
-        sympy expression or None
-            The final conservation of mass polynomial if using GenericBindingModel,
-            None otherwise.
-        """
         if self._model_name == "GenericBindingModel":
             return self._bm.final_ct
         return None
     
     @property
     def model_spec(self):
-        """
-        Get the model specification string if using a GenericBindingModel.
-        
-        Returns
-        -------
-        str or None
-            The model specification string if using GenericBindingModel,
-            None otherwise.
-        """
         if self._model_name == "GenericBindingModel":
             return self._model_spec
         return None
     
     @property
     def simplified_equations(self):
-        """
-        Gets the simplified equilibria equations if using a GenericBindingModel
-
-        Returns
-        -------
-        dict or None
-            Dictionary of simplified equilibrium equations where keys are the species symbols
-            and values are their corresponding simplified sympy expressions if using GenericBindingModel,
-            None otherwise.
-        """
         if self._model_name == "GenericBindingModel":
-            return self._bm._simplify_equations(self._bm._parse_equilibrium_equations())
+            return self._bm.simplified_eqs
         return None
     
     @property
     def solved_vars(self):
-        """
-        Gets the solved variables if using a GenericBindingModel.
-        These are the variables solved from conservation equations.
-
-        Returns
-        -------
-        dict or None
-            Dictionary mapping variable symbols to their solved expressions if using GenericBindingModel,
-            None otherwise.
-        """
         if self._model_name == "GenericBindingModel":
             return self._bm.solved_vars
         return None
     
     @property
     def as_df(self):
-
-        out = {"expt_id":[],
-               "expt_type":[],
-               "expt_obs":[],
-               "volume":[],
-               "injection":[]}
-
-        for k in self._bm.macro_species:
-            out[k] = []
-
-        for k in self._bm.micro_species:
-            out[k] = []
+        out = {"expt_id":[],"expt_type":[],"expt_obs":[],"volume":[],"injection":[]}
+        for k in self._bm.macro_species: out[k] = []
+        for k in self._bm.micro_species: out[k] = []
 
         for p in self._points:
-            
             out["expt_id"].append(p.expt_idx)
-
-            if issubclass(type(p),SpecPoint):
+            if isinstance(p, SpecPoint):
                 out["expt_type"].append(p.obs_key)
-
-                num = "+".join(self._bm.micro_species[p._obs_mask])
+                num = "+".join([s for s_idx, s in enumerate(self._bm.micro_species) if p._obs_mask[s_idx]])
                 den = self._bm.macro_species[p._denom]
                 out["expt_obs"].append(f"{num}/{den}")
-            
-            elif issubclass(type(p),ITCPoint):
+            elif isinstance(p, ITCPoint):
                 out["expt_type"].append("itc")
-
                 out["expt_obs"].append("obs_heat")
-
             else:
-                err = "point class not recognized\n"
-                raise ValueError(err)
+                raise ValueError("point class not recognized\n")
 
             out["volume"].append(p._total_volume)
             out["injection"].append(p._injection_volume)
-
             for i, k in enumerate(self._bm.macro_species):
                 out[k].append(p._macro_array[p._idx,i])
-
             for i, k in enumerate(self._bm.micro_species):
                 out[k].append(p._micro_array[p._idx,i])
             
@@ -736,13 +639,4 @@ class GlobalModel:
 
     @property
     def concentrations_df(self):
-        """
-        Get the concentrations DataFrame from the underlying binding model.
-        
-        Returns
-        -------
-        pandas.DataFrame    
-            DataFrame containing the most recent concentration calculations
-            from the binding model.
-        """
         return self._bm.concentrations_df

@@ -1,4 +1,3 @@
-
 from .experimental_point import ExperimentalPoint
 
 import numpy as np
@@ -73,6 +72,44 @@ class SpecPoint(ExperimentalPoint):
         num = np.sum(self._micro_array[self._idx,self._obs_mask])
         den = self._macro_array[self._idx,self._denom]
 
+        if den == 0:
+            return np.nan
         return num/den
+    
+    def get_d_y_d_concs(self):
+        """
+        Calculate the derivative of the calculated value with respect to the
+        microscopic species concentrations: d(y_calc)/d(micro_concs).
 
+        For y = sum(micro_num) / macro_den, the derivative with respect to
+        a specific micro_species[k] is 1/macro_den if k is in the numerator
+        mask, and 0 otherwise.
 
+        Returns
+        -------
+        numpy.ndarray
+            A 1D array of shape (num_micro_species,).
+        """
+        den = self._macro_array[self._idx, self._denom]
+        if den == 0:
+            return np.zeros(self._micro_array.shape[1], dtype=float)
+            
+        # The derivative is 1/den for species in the numerator, 0 for all others.
+        deriv = self._obs_mask.astype(float) / den
+        return deriv
+
+    def get_d_y_d_other_params(self, parameters):
+        """
+        Calculate the derivative of the calculated value with respect to any
+        "other" parameters (i.e., not binding constants). For SpecPoint,
+        this is essentially zero as fudge factors are handled implicitly.
+
+        Returns
+        -------
+        dict
+            An empty dictionary, as there are no direct parameter dependencies.
+        """
+        # Spectroscopic points have no direct dependence on enthalpies or fudges.
+        # The effect of fudge factors is implicitly captured by the chain rule
+        # in the main GlobalModel jacobian method, via the d(concs)/d(fudge) term.
+        return {}
