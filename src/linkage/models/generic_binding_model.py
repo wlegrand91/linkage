@@ -2,35 +2,92 @@ import numpy as np
 import pandas as pd
 from sympy import Poly, lambdify, diff, Matrix
 import warnings
-
-# Import the independent library for symbolic derivation
 from bindingpolytools import BindingPolynomial
 
+
 class GenericBindingModel():
-    """
-    A class that uses a symbolic engine (BindingPolyTools) to define a binding 
-    model and then performs numerical calculations to solve for species 
-    concentrations based on the derived polynomial.
-    """
+
 
     def __init__(self, model_spec, debug=False):
+
+
         """
-        Initializes the binding model by delegating symbolic derivation
-        to the BindingPolynomial tool.
+        Solves for species concentrations in a system of chemical equilibrium.
+
+        This class uses the `BindingPolynomial` class from the `BindingPolyTools`
+        library, which uses the SymPy library to symbolically derive the binding
+        polynomial equation from a set of user-defined equilibrium and mass
+        conservation equations. This derived polynomial is then used to perform
+        fast numerical calculations, solving for the concentrations of all chemical
+        species under specified conditions.
+
+        The core methodology relies on algebraically reducing the entire system of
+        equilibria and mass balance equations into a single polynomial for one
+        unknown free concentration (referred to internally as `_c_symbol`). Once the
+        root of this polynomial is found numerically, all other species'
+        concentrations are determined by back-substitution.
+
+        Analytical Jacobian Calculation:
+        -------------------------------
+        In addition to solving for concentrations, the class performs a one-time
+        symbolic derivation of the Jacobian matrix. This matrix represents the
+        sensitivity of each species' concentration to changes in the equilibrium
+        constants (i.e., d[species]/d[K]).
+
+        The derivation uses SymPy to apply the Implicit Function Theorem and the
+        chain rule to the symbolic equations. The resulting analytical Jacobian is
+        then compiled into a highly efficient numerical function. This provides a
+        significant speed and accuracy advantage over traditional numerical
+        differentiation (e.g., finite difference) methods. The numerical Jacobian
+        can be retrieved for any set of conditions, making it ideal for use in
+        sensitivity analysis or gradient-based optimization for parameter fitting.
+
+        Model Specification and Limitations:
+        -----------------------------------
+        Formatting examples for the `model_spec` input can be found in the
+        `linkage/src/linkage/model_specs` folder. 
+        The specification can also be defined as a docstring
+        in a script or Jupyter notebook for on-the-fly model changes.
+
+        The `model_spec` string must define a system whose species dependency
+        graph is acyclic. This technical constraint means that the network of
+        reactions can be solved through sequential substitution, which is a
+        requirement for the symbolic engine to derive the necessary polynomial.
+
+        In less mathematical terms, the model's structure must not contain any
+        circular dependencies.
+
+        Examples of supported reaction topologies:
+        - Sequential Binding: A linear chain of reactions, such as a protein
+            binding multiple ligands in a stepwise fashion (e.g., P -> PL -> PL2).
+        - Competitive Binding: A central hub species binding to multiple,
+            non-interacting competitors (e.g., L1 <- P -> L2). This forms a valid
+            star-shaped or tree-like structure.
+
+        Examples of unsupported (cyclic) topologies that will fail:
+        - Reaction Rings: A system where species A binds B, B binds C, and C
+            in turn binds A. It is impossible to solve for [A] without first
+            knowing [C], which requires knowing [B], which requires knowing [A],
+            creating a circular dependency.
+        - Coupled Systems: Any system that cannot be algebraically simplified
+            and would require a numerical solver for a system of simultaneous
+            non-linear equations.
         """
+
+
         if model_spec is None:
             raise ValueError("No model specification provided")
 
         self._model_spec = model_spec
         self._debug = debug
-        
+
         poly_tool = BindingPolynomial(model_spec, debug=self._debug)
 
         self._equilibria = poly_tool._equilibria
         self._constants = poly_tool._constants
         self._micro_species = poly_tool._micro_species
         self._macro_species = poly_tool._macro_species
-        
+
         self.symbols_dict = poly_tool.symbols
         self._c_symbol = poly_tool._c_symbol
         self._c_species_name = poly_tool._c_species_name
@@ -56,7 +113,7 @@ class GenericBindingModel():
 
     def _setup_numerical_model(self):
         self._log("\nPreparing symbolic model for numerical evaluation")
-        
+
         try:
             self.poly_obj = Poly(self.final_ct, self._c_symbol)
             self.symbolic_coeffs = self.poly_obj.all_coeffs()
@@ -69,7 +126,7 @@ class GenericBindingModel():
             self._lambdified_coeffs_funcs = []
             for coeff_expr in self.symbolic_coeffs:
                 args_for_lambdify = [s for s in self._param_symbols_ordered if s in coeff_expr.free_symbols]
-                
+
                 if not args_for_lambdify:
                     self._lambdified_coeffs_funcs.append(lambda **kwargs: float(coeff_expr))
                 else:
@@ -89,7 +146,7 @@ class GenericBindingModel():
         self._log("\nDeriving symbolic Jacobian")
         self.jacobian_function = None
         self._jacobian_input_symbols = None
-        
+
         try:
             F = self.final_ct
             param_symbols = [self.symbols_dict[c] for c in self._constants]
@@ -105,7 +162,7 @@ class GenericBindingModel():
             jacobian_rows = []
             for species_name in self._micro_species:
                 species_sym = self.symbols_dict[species_name]
-                
+
                 # Find the symbolic expression for the current species
                 if species_sym == self._c_symbol:
                     species_expr = self._c_symbol
