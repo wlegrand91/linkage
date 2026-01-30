@@ -441,3 +441,26 @@ class BindingModel:
         microspecies and the stoichiometries of those microspecies.
         """
         return self._species
+
+    @property
+    def physical_param_names(self):
+        """
+        Default implementation: physical parameters are the same as model parameters.
+        """
+        return self.param_names
+
+    def get_physical_params(self, reg_params_dict):
+        """
+        Default implementation: physical parameters are the same as regression parameters.
+        """
+        return reg_params_dict.copy()
+
+    def get_physical_jacobian(self, reg_params_dict):
+        """
+        Default implementation: physical parameters are the same as regression parameters,
+        so the Jacobian is the identity matrix.
+        """
+        # Assuming reg_params_dict keys match param_names order, or just returning identity of size N
+        # GlobalModel expects (N_phys, N_reg) array.
+        n = len(reg_params_dict)
+        return np.eye(n)

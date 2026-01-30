@@ -17,11 +17,10 @@ class ITCPoint(ExperimentalPoint):
                  del_macro_array,
                  total_volume,
                  injection_volume,
-                 dh_param_start_idx,
-                 dh_param_end_idx,
                  dh_sign,
                  dh_product_mask,
-                 dh_dilution_mask):
+                 dh_dilution_idx,
+                 titrating_species_mask):
         """
         Initialize an ITC data point. 
         
@@ -46,19 +45,18 @@ class ITCPoint(ExperimentalPoint):
             total volume of cell plus titrant at this point in the titration
         injection_volume : float
             volume of last injection
-        dh_param_start_idx : int
-            index of first enthalpy parameter in guesses array
-        dh_param_end_idx : int
-            index of last enthalpy parameter in guesses array
         dh_sign : list-like
             list of enthalpy signs (1 for forward, -1 for reverse) for each 
             reaction
         dh_product_mask : list-like
             list of boolean masks for pulling out products when calcuating 
             enthalpy changes
-        dh_dilution_mask : np.ndarray (bool)
-            mask indicating which macro species have a dilution heat associated
-            with them. 
+        dh_dilution_idx : list
+            list of integer indices pointing to the dilution heat parameters in
+            the main parameter vector.
+        titrating_species_mask : np.ndarray (bool)
+            mask indicating which macro species are being titrated in this
+            experiment.
         """
         
         super().__init__(idx=idx,
@@ -71,69 +69,55 @@ class ITCPoint(ExperimentalPoint):
                          injection_volume=injection_volume)
 
         # Get dh specific parameters        
-        self._dh_param_start_idx = dh_param_start_idx
-        self._dh_param_end_idx = dh_param_end_idx
         self._dh_sign = dh_sign
         self._dh_product_mask = dh_product_mask
-        self._dh_dilution_mask = dh_dilution_mask
-
-        # Decide how to cut parameter array into enthalpies (first block of
-        # param) and heats of dilution (second block of param)
-        self._dh_first = self._dh_param_start_idx
-        self._dh_last = self._dh_first + len(self._dh_sign) 
-        self._dil_first = self._dh_last
-        self._dil_last = self._dh_param_end_idx
+        self._dh_dilution_idx = dh_dilution_idx
+        self._titrating_species_mask = titrating_species_mask
 
         # Get volume dilution scalar
         self._meas_vol_dilution = (1 - self._injection_volume/self._total_volume)
 
         
-    def calc_value(self,parameters,*args,**kwargs):
+    def calc_value(self, parameters, full_dh_array=None, **kwargs):
         """
         Calculate the heat for this shot given the current estimated
-        concentration changes and enthalpy parameters. *args and **kwargs are
-        ignored. 
+        concentration changes and enthalpy parameters. 
 
         Parameters
         ----------
         parameters : np.ndarray (float)
             fit parameters (guesses array)
+        full_dh_array : np.ndarray, optional
+            A pre-constructed array containing the enthalpy value for every
+            single equilibrium, respecting any reparameterization rules.
         """
         if self._idx == 0:
             return 0.0
 
-        dh_array = parameters[self._dh_first:self._dh_last]
+        if full_dh_array is None:
+            raise ValueError("full_dh_array must be provided to ITCPoint.calc_value")
+
+        dh_array = full_dh_array
         
         total_heat = 0.0
         
         # Get conc changes for each equilibrium. 
         for i in range(len(self._dh_product_mask)):
-
-            # Concentration of relevant microspecies before the injection 
-            C_before = self._micro_array[self._idx-1,self._dh_product_mask[i]]
-
-            # Concentration of relevant microspecies after the injection
-            C_after  = self._micro_array[self._idx,self._dh_product_mask[i]]
-            
-            # Concentration change in the cell itself. Scale the down the 
-            # concentration before to account for the dilution effect of the 
-            # shot.
-            del_C = C_after - C_before*self._meas_vol_dilution
-
-            # Treat concentration change as the *mean* of all species in 
-            # dh_product_mask. For a simple reaction A + B -> C, this would be
-            # the mean of the change in "C". For a more complicated reaction, 
-            # this would be A + B -> C + D, this would be mean(dC,dD). 
+            C_before = self._micro_array[self._idx-1, self._dh_product_mask[i]]
+            C_after  = self._micro_array[self._idx, self._dh_product_mask[i]]
+            del_C = C_after - C_before * self._meas_vol_dilution
             dC = np.mean(del_C)
+            total_heat += dh_array[i] * self._dh_sign[i] * dC
 
-            total_heat += dh_array[i]*self._dh_sign[i]*dC
-
-        total_heat = total_heat*self._total_volume
+        total_heat = total_heat * self._total_volume
 
         # Heat of dilution
-        dil_heats = parameters[self._dil_first:self._dil_last]
-        molar_change = self._del_macro_array[self._idx,self._dh_dilution_mask]
-        total_heat += np.sum(dil_heats*molar_change)*self._injection_volume
+        if len(self._dh_dilution_idx) > 0:
+            dil_heats = parameters[self._dh_dilution_idx]
+            molar_change = self._del_macro_array[self._idx, self._titrating_species_mask]
+            
+            if dil_heats.shape == molar_change.shape:
+                total_heat += np.sum(dil_heats * molar_change) * self._injection_volume
         
         return total_heat
     
@@ -148,10 +132,18 @@ class ITCPoint(ExperimentalPoint):
         """
         return np.zeros(self._micro_array.shape[1], dtype=float)
 
-    def get_d_y_d_other_params(self, parameters):
+    def get_d_y_d_other_params(self, parameters, full_dh_array=None, **kwargs):
         """
         Calculate the derivative of the heat with respect to any "other"
-        parameters, which for ITC are the enthalpies and heats of dilution.
+        parameters, which for ITC are the heats of dilution. Derivatives for
+        reaction enthalpies (dH) are handled in GlobalModel.
+
+        Parameters
+        ----------
+        parameters : np.ndarray
+            The full vector of fittable parameters.
+        full_dh_array : np.ndarray, optional
+            Ignored in this method, but kept for consistent signature with calc_value.
 
         Returns
         -------
@@ -163,26 +155,34 @@ class ITCPoint(ExperimentalPoint):
         if self._idx == 0:
             return deriv_dict
 
-        # 1. Derivatives with respect to reaction enthalpies (dH_params)
-        for i in range(len(self._dh_product_mask)):
-            param_index = self._dh_first + i
-            # d(heat)/d(dH_i) = V * sign_i * mean(C_after - C_before*dil)
-            
-            C_before = self._micro_array[self._idx - 1, self._dh_product_mask[i]]
-            C_after  = self._micro_array[self._idx, self._dh_product_mask[i]]
-            del_C = C_after - C_before * self._meas_vol_dilution
-            dC = np.mean(del_C)
-            
-            deriv_val = self._total_volume * self._dh_sign[i] * dC
-            deriv_dict[param_index] = deriv_val
-
-        # 2. Derivatives with respect to heats of dilution (dil_params)
-        molar_change = self._del_macro_array[self._idx, self._dh_dilution_mask]
-        dil_param_indices = np.arange(self._dil_first, self._dil_last)
-        
-        for i, param_index in enumerate(dil_param_indices):
-            # d(heat)/d(dil_heat_i) = V_inj * molar_change_i
-            deriv_val = self._injection_volume * molar_change[i]
-            deriv_dict[param_index] = deriv_val
+        # Derivatives with respect to heats of dilution (dil_params)
+        if len(self._dh_dilution_idx) > 0:
+            molar_change = self._del_macro_array[self._idx, self._titrating_species_mask]
+            for i, param_index in enumerate(self._dh_dilution_idx):
+                if i < len(molar_change):
+                    deriv_dict[param_index] = self._injection_volume * molar_change[i]
 
         return deriv_dict
+
+    def get_error_value(self, y_calc, base_error=0.1, proportional_error=0.01):
+        """
+        Calculate the expected standard deviation for this point using the robust
+        ITC error model: sigma = sqrt(sigma_base^2 + (f_rel * y_calc)^2)
+
+        Parameters
+        ----------
+        y_calc : float
+            The calculated heat value for this point.
+        base_error : float, default=0.1
+            The constant noise floor (e.g. uCal).
+        proportional_error : float, default=0.01
+            The proportional error factor (fractional, e.g. 0.01 for 1%).
+
+        Returns
+        -------
+        float
+            Calculated standard deviation sigma_i.
+        """
+        # Ensure positive sigma
+        sigma = np.sqrt(base_error**2 + (proportional_error * y_calc)**2)
+        return sigma

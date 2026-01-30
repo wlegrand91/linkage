@@ -17,7 +17,6 @@ class CaEDTA(BindingModel):
 
         KE = np.exp(param_array[0])
         CT, ET = macro_array
-
         if CT == 0 or ET == 0:
             return np.array([CT,ET,0.0],dtype=float)
 

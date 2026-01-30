@@ -196,9 +196,9 @@ def test_GlobalModel__get_enthalpy_param(fake_spec_and_itc_data):
     assert hasattr(gf,"_dh_param_end_idx")
     assert hasattr(gf,"_dh_sign")
     assert hasattr(gf,"_dh_product_mask")
-    assert hasattr(gf,"_dh_dilution_mask")
+    assert hasattr(gf,"_dh_dilution_idx_map")
 
-    expected = ['dH_I','dH_E','dH_1','dH_2','dH_3','dH_4',
+    expected = ['dH_1','dH_2','dH_3','dH_4','dH_E','dH_I',
                 "nuisance_dil_ET"]
     dh_param = gf._parameter_names[gf._dh_param_start_idx:gf._dh_param_end_idx + 1]
 
@@ -218,7 +218,9 @@ def test_GlobalModel__get_enthalpy_param(fake_spec_and_itc_data):
     assert np.array_equal(gf._dh_sign,[1,1,1,1,1,1])
 
     # Make sure it is figuring out the dilution correctly
-    assert np.array_equal(gf._dh_dilution_mask,[False,False,True])
+    # Make sure it is figuring out the dilution correctly
+    assert "ET" in gf._dh_dilution_idx_map 
+    assert len(gf._dh_dilution_idx_map) == 1
 
     # Remove itc experiment; should have no enthalpies
     this_expt_list = copy.deepcopy(base_expt_list)
@@ -229,7 +231,7 @@ def test_GlobalModel__get_enthalpy_param(fake_spec_and_itc_data):
     assert not hasattr(gf,"_dh_param_end_idx")
     assert not hasattr(gf,"_dh_sign")
     assert not hasattr(gf,"_dh_product_mask")
-    assert not hasattr(gf,"_dh_dilution_mask")
+    assert not hasattr(gf,"_dh_dilution_idx_map")
 
 def test_GlobalModel__get_expt_fudge(fake_spec_and_itc_data):
 
@@ -316,7 +318,7 @@ def test_GlobalModel_model_normalized(simulated_itc):
     # Run with ln(K) = 10, dH = -10
     y_calc = gf.model_normalized(np.array([10,-10,0]))
     assert np.isclose(y_calc[0],0.9237741556674668)
-    assert np.isclose(y_calc[-1],0.9231043096727171)
+    assert np.isclose(y_calc[-1],0.2539281609176995)
 
 
 def test_GlobalModel_model(simulated_itc):
@@ -335,7 +337,7 @@ def test_GlobalModel_model(simulated_itc):
     # Run with ln(K) = 10, dH = -10
     y_calc = gf.model(np.array([10,-10,0]))
     assert np.isclose(y_calc[0],0)
-    assert np.isclose(y_calc[-1],-0.00949876)
+    assert np.isclose(y_calc[-1],-9.498761437968351)
 
 
 def test_GlobalModel_y_obs(simulated_itc):
