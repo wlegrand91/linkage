@@ -3,60 +3,68 @@ import numpy as np
 
 import copy
 
-def sync_cell_and_syringe(cell_contents,
-                          syringe_contents):
+
+def sync_cell_and_syringe(cell_contents: dict,
+                          syringe_contents: dict) -> tuple[list, list, dict, dict]:
     """
-    Make sure the same species are in both cell_contents and syringe_contents. 
-    Any species present in one but not the other are assigned concentrations
-    of 0.0.
+    Reconcile cell and syringe composition dictionaries.
+
+    Ensures both dictionaries contain the same set of species by assigning a
+    concentration of 0.0 to any species present in one but absent from the
+    other. Also identifies which species are actively titrating (i.e. present
+    in the syringe at a concentration different from the cell).
 
     Parameters
     ----------
     cell_contents : dict
-        dictionary with species as keys and cell concentrations as values 
+        Macrospecies names mapped to their initial concentrations (mol/L) in
+        the cell.
     syringe_contents : dict
-        dictionary with species as keys and syringe concentrations as values 
-    
+        Macrospecies names mapped to their concentrations (mol/L) in the
+        syringe.
+
     Returns
     -------
     species : list
-        sorted list of all species seen 
+        Sorted list of all species found across both dictionaries.
     titrating_species : list
-        list of all species that titrate, meaning they are in the syringe and 
-        have a different concentration from the concentration of that species
-        in the cell
+        Species that are present in the syringe at a concentration different
+        from the cell — these are the ones whose cell concentration changes
+        over the course of the titration.
     cell_contents : dict
-        cell_contents dict with concs of zero for missing species
+        Copy of the input cell dictionary with zeros filled in for any missing
+        species.
     syringe_contents : dict
-        syringe_contents dict with concs of zero for missing species
+        Copy of the input syringe dictionary with zeros filled in for any
+        missing species.
+
+    Raises
+    ------
+    ValueError
+        If either ``cell_contents`` or ``syringe_contents`` is not a dict.
     """
-    if not issubclass(type(cell_contents),dict):
+
+    if not issubclass(type(cell_contents), dict):
         err = "cell_contents should be a dictionary with initial cell concs\n"
         raise ValueError(err)
 
-    if not issubclass(type(syringe_contents),dict):
+    if not issubclass(type(syringe_contents), dict):
         err = "syringe_contents should be a dictionary with initial syringe concs\n"
         raise ValueError(err)
 
     titrating_species = []
     for s in syringe_contents:
-
         if s in cell_contents:
             if syringe_contents[s] == cell_contents[s]:
                 continue
         titrating_species.append(s)
 
-    # List of all species in syringe and cell
     species = list(set(syringe_contents.keys()).union(set(cell_contents.keys())))
     species.sort()
-    
-    # Copy syringe and cell dictionaries because we are about to modify
-    # them.
+
     syringe_contents = copy.deepcopy(syringe_contents)
     cell_contents = copy.deepcopy(cell_contents)
-    
-    # If a species is only in the syringe or cell, set it to zero in the
-    # other pool
+
     for s in species:
         if s not in syringe_contents:
             syringe_contents[s] = 0.0
@@ -65,117 +73,154 @@ def sync_cell_and_syringe(cell_contents,
 
     return species, titrating_species, cell_contents, syringe_contents
 
-def _titr_constant_volume(cell_contents,
-                          syringe_contents,
-                          injection_array,
-                          cell_volume,
-                          out):
 
-    # For each injection
-    for i in range(len(injection_array)):
-
-        # Record current volume and injection
-        out["injection"].append(injection_array[i])
-        out["volume"].append(cell_volume)
-
-        # Update cell concs based on injected titrant
-        for s in cell_contents.keys():
-
-            prev_conc = cell_contents[s]
-            
-            a = (cell_volume - injection_array[i])*prev_conc
-            b = injection_array[i]*syringe_contents[s]
-
-            cell_contents[s] = (a + b)/cell_volume
-            out[s].append(cell_contents[s])
-
-    return out
-
-def _titr_increase_volume(cell_contents,
-                          syringe_contents,
-                          injection_array,
-                          cell_volume,
-                          out):
-    
-    # For each injection
-    current_volume = cell_volume
-    meas_vol_dilution = 1
-    for i in range(len(injection_array)):
-
-        # Get volume after this injection is injected
-        new_volume = current_volume + injection_array[i]
-            
-        # Record current volume and injection
-        out["injection"].append(injection_array[i])
-        out["volume"].append(new_volume)
-
-        # Update cell concs based on injected titrant
-        for s in cell_contents.keys():
-
-            a = current_volume*cell_contents[s]
-            b = injection_array[i]*syringe_contents[s]
-
-            cell_contents[s] = (a + b)/new_volume
-            out[s].append(cell_contents[s])
-
-        # Update volume
-        current_volume = new_volume
-
-    return out
-            
-
-
-def titrator(cell_contents,
-             syringe_contents,
-             injection_array,
-             cell_volume=1800,
-             constant_volume=False):
+def _titr_constant_volume(cell_contents: dict,
+                          syringe_contents: dict,
+                          injection_array: np.ndarray,
+                          cell_volume: float,
+                          out: dict) -> dict:
     """
-    Simulate a titrator injecting constant volumes into a cell. Calculate the
-    total concentrations of all species at each point. 
-    
+    Compute per-injection concentrations under constant-volume conditions.
+
+    Models each injection as: withdraw ``injection_array[i]`` µL from the
+    cell, then add the same volume from the syringe, keeping the total cell
+    volume fixed at ``cell_volume`` throughout.
+
     Parameters
     ----------
     cell_contents : dict
-        dictionary holding species in cell where keys are species names
-        and values are concentrations. If a species is not seen in this
-        dictionary but is seen in the syringe dictionary, it is assumed to have
-        a concentration of 0.0. 
+        Current cell concentrations (mol/L), updated in-place as injections
+        are applied.
     syringe_contents : dict
-        dictionary holding initial species in syringe where keys are species
-        names and values are concentrations. If a species is not seen in this
-        dictionary but is seen in the cell dictionary, it is assumed to have
-        a concentration of 0.0. 
-    cell_volume : float, default=1800
-        volume of cell at start
-    injection_array : array
-        injections as an array. if a point is collected before a injection is injected,
-        the first entry in this array should be 0. 
-    constant_volume : bool, default=False
-        if true, assume that the titrator pulls out each injection_size before injecting, 
-        keeping the total cell volume the same over the titration. 
-    
+        Syringe concentrations (mol/L), held constant.
+    injection_array : numpy.ndarray
+        Volume of each injection in the same units as ``cell_volume``.
+    cell_volume : float
+        Fixed cell volume.
+    out : dict
+        Accumulator dictionary mapping species names (and ``'injection'`` and
+        ``'volume'``) to lists of values. Populated in-place.
+
     Returns
     -------
-    out : pandas.DataFrame
-        pandas dataframe with the concentrations of all species in the cell
-        versus injections in the experiment
+    out : dict
+        The updated accumulator dictionary.
     """
 
-    # Make sure all species are present in the cell and syringe dictionaries
-    species, _, cell_contents, syringe_contents = sync_cell_and_syringe(cell_contents,
-                                                                        syringe_contents)
-    
-    # Ensure injection_array is a numpy array of floats
-    injection_array = np.array(injection_array,dtype=float)
-    
-    # Create output dictionary and populate with initial state
-    out = {}
-    out["injection"] = []
-    out["volume"] = []
+    for i in range(len(injection_array)):
+
+        out["injection"].append(injection_array[i])
+        out["volume"].append(cell_volume)
+
+        for s in cell_contents.keys():
+            prev_conc = cell_contents[s]
+            a = (cell_volume - injection_array[i]) * prev_conc
+            b = injection_array[i] * syringe_contents[s]
+            cell_contents[s] = (a + b) / cell_volume
+            out[s].append(cell_contents[s])
+
+    return out
+
+
+def _titr_increase_volume(cell_contents: dict,
+                          syringe_contents: dict,
+                          injection_array: np.ndarray,
+                          cell_volume: float,
+                          out: dict) -> dict:
+    """
+    Compute per-injection concentrations under increasing-volume conditions.
+
+    Models standard ITC behaviour: each injection adds ``injection_array[i]``
+    µL to the cell, increasing the total volume cumulatively.
+
+    Parameters
+    ----------
+    cell_contents : dict
+        Current cell concentrations (mol/L), updated in-place as injections
+        are applied.
+    syringe_contents : dict
+        Syringe concentrations (mol/L), held constant.
+    injection_array : numpy.ndarray
+        Volume of each injection in the same units as ``cell_volume``.
+    cell_volume : float
+        Initial cell volume before any injections.
+    out : dict
+        Accumulator dictionary mapping species names (and ``'injection'`` and
+        ``'volume'``) to lists of values. Populated in-place.
+
+    Returns
+    -------
+    out : dict
+        The updated accumulator dictionary.
+    """
+
+    current_volume = cell_volume
+    for i in range(len(injection_array)):
+
+        new_volume = current_volume + injection_array[i]
+
+        out["injection"].append(injection_array[i])
+        out["volume"].append(new_volume)
+
+        for s in cell_contents.keys():
+            a = current_volume * cell_contents[s]
+            b = injection_array[i] * syringe_contents[s]
+            cell_contents[s] = (a + b) / new_volume
+            out[s].append(cell_contents[s])
+
+        current_volume = new_volume
+
+    return out
+
+
+def titrator(cell_contents: dict,
+             syringe_contents: dict,
+             injection_array: np.ndarray,
+             cell_volume: float = 201.3,  # MicroCal ITC200 cell volume (µL)
+             constant_volume: bool = False) -> pd.DataFrame:
+    """
+    Simulate a titration and return per-injection total concentrations.
+
+    Computes the total concentration of every macrospecies in the cell after
+    each injection, accounting for dilution and mixing. Species absent from
+    either dictionary are assumed to have a concentration of 0.
+
+    Parameters
+    ----------
+    cell_contents : dict
+        Macrospecies names mapped to their initial concentrations (mol/L) in
+        the cell.
+    syringe_contents : dict
+        Macrospecies names mapped to their concentrations (mol/L) in the
+        syringe.
+    injection_array : numpy.ndarray
+        Ordered injection volumes. If a pre-injection baseline point is
+        included, the first entry should be 0.
+    cell_volume : float, default 201.3
+        Initial cell volume in µL (matching the units of ``injection_array``).
+        Default is the MicroCal ITC200 cell volume.
+    constant_volume : bool, default False
+        If ``True``, use constant-volume mode (withdraw-then-inject). If
+        ``False``, use standard ITC mode where each injection increases the
+        total cell volume.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per injection point. Columns are ``'injection'``, ``'volume'``,
+        and one column per macrospecies holding its total concentration
+        (mol/L) at that point.
+    """
+
+    species, _, cell_contents, syringe_contents = sync_cell_and_syringe(
+        cell_contents, syringe_contents)
+
+    injection_array = np.array(injection_array, dtype=float)
+
+    out: dict = {"injection": [], "volume": []}
     for s in species:
         out[s] = []
-    
+
     if constant_volume:
         out = _titr_constant_volume(cell_contents,
                                     syringe_contents,
@@ -188,6 +233,5 @@ def titrator(cell_contents,
                                     injection_array,
                                     cell_volume,
                                     out)
-            
-    # Convert out to dataframe and return
+
     return pd.DataFrame(out)

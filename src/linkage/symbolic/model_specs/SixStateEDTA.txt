@@ -8,5 +8,15 @@ equilibria:
 
 species:
     ET = E + EC
-    AT = I + A + 2*AC1 + AC2 + 2*AC3 + AC4
-    CT = C + EC + 2*AC1 + 2*AC2 + 6*AC3 + 4*AC4
+    AT = I + A + AC1 + AC2 + AC3 + AC4
+    CT = C + EC + AC1 + 2*AC2 + 3*AC3 + 4*AC4
+
+reparameterize:
+    K1 = 2 * k_high
+    K2 = k_high / 2
+    K3 = 2 * k_low
+    K4 = k_low / 2
+    dH_1 = dH_high
+    dH_2 = dH_high
+    dH_3 = dH_low
+    dH_4 = dH_low

@@ -2,7 +2,7 @@
 import pytest
 import numpy as np
 from linkage.symbolic.model import SymbolicBindingModel
-from linkage.symbolic.generic_binding_model import GenericBindingModel
+from linkage.symbolic.binding_model import BindingModel
 
 def test_SymbolicBindingModel_init():
     # Simple model: A + B <-> AB
@@ -34,7 +34,7 @@ def test_SymbolicBindingModel_solve():
     # Solve for K1=1e6 (LogK = 13.8), AT=1e-6, BT=1e-6
     # Param dict expects LogK if not dH? No, symbolic model expects raw values in reg_dict?
     # SymbolicBindingModel.solve_concentrations takes reg_param_values.
-    # In GenericBindingModel wrapper we do exp().
+    # In BindingModel wrapper we do exp().
     # Let's check SymbolicBindingModel behavior directly.
     # It passes values to `get_physical_params`.
     # If standard map, K1_fit -> K1_phys is exp().
@@ -56,20 +56,20 @@ def test_SymbolicBindingModel_solve():
     assert res["AB"] > 0
     assert np.isclose(res["A"] + res["AB"], 1e-5)
 
-def test_GenericBindingModel_init():
+def test_BindingModel_init():
     model_spec = """
     equilibria:
         A + B -> AB; K1
     species:
         AT = A + AB
     """
-    gbm = GenericBindingModel(model_spec)
-    # GenericBindingModel automatically adds dH parameters
+    gbm = BindingModel(model_spec)
+    # BindingModel automatically adds dH parameters
     assert "K1" in gbm.param_names
     assert "dH_1" in gbm.param_names
     assert np.array_equal(gbm.macro_species, ["AT"])
 
-def test_GenericBindingModel_get_concs():
+def test_BindingModel_get_concs():
     model_spec = """
     equilibria:
         A + B -> AB; K1
@@ -77,7 +77,7 @@ def test_GenericBindingModel_get_concs():
         AT = A + AB
         BT = B + AB
     """
-    gbm = GenericBindingModel(model_spec)
+    gbm = BindingModel(model_spec)
     
     # Pass params as ARRAY (LogK, dH)
     params = np.array([np.log(1e6), 0.0]) # K1 = 1e6, dH = 0
@@ -92,3 +92,50 @@ def test_GenericBindingModel_get_concs():
     assert c_dict["AB"] > 0
     assert np.isclose(c_dict["A"] + c_dict["AB"], 1e-5)
 
+
+def test_root_selection_continuity():
+    """
+    Verify continuity-tracking root selection for a 2-site symmetric model.
+
+    As AT increases (more ligand titrated into fixed ET), the free ligand [A]
+    should be monotonically non-decreasing. Mass balance should hold at every
+    injection point.
+    """
+    model_spec = """
+    equilibria:
+        E + A -> EA; K1
+        EA + A -> EA2; K2
+    species:
+        ET = E + EA + EA2
+        AT = A + EA + 2*EA2
+    reparameterize:
+        K2 = K1
+    """
+    bm = SymbolicBindingModel(model_spec)
+
+    ET = 1e-5
+    AT_values = np.linspace(0, 4e-5, 20)
+    reg_params = {"K1": np.log(1e6), "dH_1": 0.0, "dH_2": 0.0}
+
+    prev_c = None
+    free_A_values = []
+
+    for at in AT_values:
+        result = bm.solve_concentrations(reg_params, {"ET": ET, "AT": at}, prev_c=prev_c)
+        c_key = str(bm.c_symbol)
+        prev_c = result.get(c_key)
+        free_A_values.append(prev_c)
+
+        # Mass balance: A + EA + 2*EA2 == AT
+        mass_balance = result["A"] + result["EA"] + 2 * result["EA2"]
+        assert np.isclose(mass_balance, at, atol=1e-15, rtol=1e-6), (
+            f"Mass balance failed at AT={at:.2e}: got {mass_balance:.4e}"
+        )
+
+    # Free [A] should be non-decreasing across the titration
+    free_A = np.array(free_A_values)
+    diffs = np.diff(free_A)
+    assert np.all(diffs >= -1e-18), (
+        f"Free [A] is not monotonically non-decreasing — possible wrong-root selection.\n"
+        f"Diffs: {diffs}"
+    )

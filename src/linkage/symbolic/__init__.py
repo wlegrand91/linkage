@@ -1,2 +1,2 @@
-from .generic_binding_model import GenericBindingModel
+from .binding_model import BindingModel
 from .model import SymbolicBindingModel

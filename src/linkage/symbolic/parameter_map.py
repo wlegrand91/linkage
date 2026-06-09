@@ -1,85 +1,132 @@
+import warnings
+
 import numpy as np
 from sympy import symbols, sympify, Matrix, diff, lambdify
 
+
 class ParameterMapper:
     """
-    Handles certain parameters being defined as functions of other parameters.
-    Maintains the relationship between 'Physical Parameters' (used in the chemical model)
-    and 'Regression Parameters' (coefficients that are actually optimized).
+    Translates between regression parameters (what the optimizer sees) and
+    physical parameters (what the chemical model uses).
+
+    Physical parameters are the quantities that appear directly in the
+    binding polynomial — equilibrium constants ``K1``, ``K2``, … and
+    enthalpies ``dH_1``, ``dH_2``, ….  Regression parameters are the
+    free variables actually optimised; they equal the physical parameters
+    unless a reparameterization rule is provided.
+
+    Reparameterization rules allow constraints such as ``K2 = K1 * alpha``
+    (symmetric two-site model) or ``dH_2 = dH_1`` (enthalpy linkage).
+    The mapper parses these rules symbolically, identifies which parameters
+    become dependent (and therefore are removed from the regression set),
+    and introduces any new independent parameters (``alpha`` in the example
+    above).
+
+    All mappings are compiled into lambdified NumPy functions at
+    construction time for fast numerical evaluation.
+
+    Parameters
+    ----------
+    physical_params : list of str
+        Full list of physical parameter names required by the model,
+        e.g. ``['K1', 'K2', 'dH_1', 'dH_2']``.
+    reparam_rules_dict : dict of str → str
+        Rules mapping dependent parameter names to their string expressions.
+        Example: ``{'K2': 'K1 * alpha', 'dH_2': 'dH_1'}``.
+        Pass an empty dict when there are no reparameterisation rules.
     """
-    def __init__(self, physical_params, reparam_rules_dict):
+
+    def __init__(self,
+                 physical_params: list,
+                 reparam_rules_dict: dict):
         """
-        Args:
-            physical_params (list of str): The full list of physical parameters (e.g. ['K1', 'K2', 'dH_1']).
-            reparam_rules_dict (dict): Dictionary mapping {dependent_var_name: expression_string}.
-                Example: {'K2': 'K1 * alpha', 'dH_2': 'dH_1'}
+        Build the parameter mapper.
+
+        Parses ``reparam_rules_dict``, determines the regression parameter
+        set, builds the full symbolic mapping from regression → physical,
+        and compiles forward-map and Jacobian functions.
+
+        Parameters
+        ----------
+        physical_params : list of str
+            Full list of physical parameter names required by the model.
+        reparam_rules_dict : dict of str → str
+            Reparameterization rules; may be empty.
         """
         self.physical_params = sorted(physical_params)
         self.reparam_rules_str = reparam_rules_dict
-        
-        self.regression_params = []
-        self.rules_sympy = {}
-        self.mapping_funcs = {}
+
+        self.regression_params: list = []
+        self.rules_sympy: dict = {}
+        self.mapping_funcs: dict = {}
         self.jacobian_func = None
-        
+
         self._parse_rules()
-        
-    def _parse_rules(self):
-        # 1. We need a consistent set of Symbol objects.
-        # We will create a map {name: Symbol(name)} and ALWAYS use these objects.
-        
-        # Start with physical params
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _parse_rules(self) -> None:
+        """
+        Parse the string reparameterization rules into SymPy expressions
+        and compile numerical forward-map and Jacobian functions.
+
+        Steps:
+
+        1. Build a consistent set of SymPy Symbol objects for all
+           physical parameters.
+        2. Parse each rule string; identify new independent symbols
+           introduced on the RHS (e.g. ``alpha`` in ``K2 = K1 * alpha``).
+        3. Determine the regression-parameter set:
+           ``(physical_params − dependent_params) ∪ new_params``.
+        4. Iteratively substitute dependent-variable expressions until
+           every physical parameter is expressed purely in terms of
+           regression parameters.
+        5. Lambdify the forward map and Jacobian for fast evaluation.
+        """
+        # 1. Consistent SymPy symbols for all physical parameters.
         self.symbols_map = {p: symbols(p) for p in self.physical_params}
-        
-        # Helper to get or create symbol
-        def get_sym(name):
+
+        def get_sym(name: str):
             if name not in self.symbols_map:
                 self.symbols_map[name] = symbols(name)
             return self.symbols_map[name]
 
-        # 2. Parse rules to find dependencies and NEW variables
+        # 2. Parse rules → SymPy; collect new independent symbols.
         dependent_vars = set(self.reparam_rules_str.keys())
         potential_independent = set(self.physical_params) - dependent_vars
-        
-        new_symbols_found = set()
-        
+
+        new_symbols_found: set = set()
         self.rules_sympy = {}
-        
+
         for dep_name, expr_str in self.reparam_rules_str.items():
-            # We must parse using OUR symbols map to ensure object identity
-            # AND we must catch new symbols that appear in the string.
-            
-            # Since we don't know the new symbols yet, we can't pre-populate locals completely.
-            # But sympify can parse and we can swap symbols, or we can use custom dict.
-            # A robust way: parse, find symbols by name, replace with our canonical symbols.
-            
             try:
-                # First parse generally
                 temp_expr = sympify(expr_str)
             except Exception as e:
-                raise ValueError(f"Failed to parse rule {dep_name} = {expr_str}: {e}")
-            
-            # Now traverse free symbols, ensure they are in our map
+                raise ValueError(
+                    f"Failed to parse rule '{dep_name} = {expr_str}': {e}"
+                )
+
             final_expr = temp_expr
             for sym in temp_expr.free_symbols:
                 s_name = str(sym)
                 canonical_sym = get_sym(s_name)
-                # Replace in expression if it's a different object (it likely is)
                 final_expr = final_expr.subs(sym, canonical_sym)
-                
-                # Check if it's a new parameter
-                if s_name not in self.physical_params and s_name not in dependent_vars:
+
+                if (s_name not in self.physical_params
+                        and s_name not in dependent_vars):
                     new_symbols_found.add(s_name)
 
             self.rules_sympy[get_sym(dep_name)] = final_expr
 
-        # Regression parameters are:
-        # (PhysicalParams - DependentParams) + NewParams
-        self.regression_params = sorted(list(potential_independent) + list(new_symbols_found))
-        
-        # 3. Build Full Mapping (Physical -> Expression of Regression)
-        self.full_mapping_sympy = {}
-        
+        # 3. Regression parameters = independent physical + newly introduced.
+        self.regression_params = sorted(
+            list(potential_independent) + list(new_symbols_found)
+        )
+
+        # 4. Build the full symbolic mapping: physical_name → expr(regression).
+        self.full_mapping_sympy: dict = {}
         for p_name in self.physical_params:
             p_sym = get_sym(p_name)
             if p_name in self.reparam_rules_str:
@@ -87,135 +134,147 @@ class ParameterMapper:
             else:
                 self.full_mapping_sympy[p_name] = p_sym
 
-        # 4. Iterative Substitution
-        # We need to substitute until only regression parameters remain.
-        reg_param_symbols = {get_sym(s) for s in self.regression_params}
+        # Iterative substitution until all expressions are in terms of
+        # regression parameters only (handles chained rules).
         reg_param_names = set(self.regression_params)
-        
         for _ in range(len(self.physical_params) + 5):
             dirty = False
             for p_name in self.physical_params:
                 expr = self.full_mapping_sympy[p_name]
-                
-                # Check if we have symbols that are NOT in regression params
-                # (and thus must be dependent variables)
-                
-                # We iterate free_symbols
-                # If we find a symbol that IS NOT a regression param, we look for a rule.
-                
                 current_syms = expr.free_symbols
-                should_sub = False
-                for s in current_syms:
-                    if str(s) not in reg_param_names:
-                        should_sub = True
-                        break
-                
-                if should_sub:
-                    # Substitute using known rules
-                    # We can bulk subs
-                    # We need to be careful: subs(dict) is unordered?
-                    # Generally safely done iteratively.
-                    
-                    # We want to sub 'rule' for 'dependent_var'.
-                    # Which rule? The one from rules_sympy.
-                    # Or better: the one from full_mapping_sympy (current state)?
-                    # Using full_mapping_sympy allows chaining to propagate faster.
-                    
-                    # Create subs dict from full_mapping (but only for things that are keys there)
-                    # We only want to sub things that ARE dependent variables.
-                    
-                    subs_dict = {}
-                    for dep_name in dependent_vars:
-                        dep_sym = get_sym(dep_name)
-                        if dep_sym in current_syms:
-                             # Use the rule for this dependent var
-                             # Use the LATEST version from full_mapping?
-                             # Or the raw rule? 
-                             # If we use full_mapping, we get the benefit of previous work.
-                             subs_dict[dep_sym] = self.full_mapping_sympy[dep_name]
-                    
-                    if subs_dict:
-                        new_expr = expr.subs(subs_dict)
-                        if new_expr != expr:
-                            self.full_mapping_sympy[p_name] = new_expr
-                            dirty = True
-                            
+                if not any(str(s) not in reg_param_names for s in current_syms):
+                    continue
+                subs_dict = {
+                    get_sym(dep): self.full_mapping_sympy[dep]
+                    for dep in dependent_vars
+                    if get_sym(dep) in current_syms
+                }
+                if subs_dict:
+                    new_expr = expr.subs(subs_dict)
+                    if new_expr != expr:
+                        self.full_mapping_sympy[p_name] = new_expr
+                        dirty = True
             if not dirty:
                 break
-        
-        # 5. Lambdify
-        # Use canonical symbols for args
+
+        # 5. Lambdify forward map and Jacobian.
         self.reg_syms = [get_sym(p) for p in self.regression_params]
         self._setup_numerical_functions()
 
-    def _setup_numerical_functions(self):
-        # 1. Forward Map: Regression -> Physical
-        # We'll make a single function that returns an array or specific dict.
-        # Actually a dict is best for clarity.
-        
-        self.forward_funcs = {}
+    def _setup_numerical_functions(self) -> None:
+        """
+        Compile symbolic expressions into fast NumPy functions via
+        ``sympy.lambdify``.
+
+        Produces:
+
+        * ``forward_funcs`` — dict mapping each physical parameter name to
+          a callable that computes its value from the regression parameters.
+        * ``jacobian_lam`` — callable that returns the ``(n_physical ×
+          n_regression)`` Jacobian matrix ``d[physical] / d[regression]``.
+        """
+        # Forward map: one lambdified function per physical parameter.
+        self.forward_funcs: dict = {}
         for p_name, expr in self.full_mapping_sympy.items():
-            # Lambdify
-            # Ensure we only pass the args available in regression params
-            self.forward_funcs[p_name] = lambdify(self.reg_syms, expr, modules="numpy")
-            
-        # 2. Jacobian: d(Physical)/d(Regression)
-        # Matrix of shape (N_physical, N_regression)
-        # J_ij = d(Physical_i) / d(Regression_j)
-        
+            self.forward_funcs[p_name] = lambdify(
+                self.reg_syms, expr, modules="numpy"
+            )
+
+        # Jacobian: d(physical_i) / d(regression_j).
         rows = []
         for p_name in self.physical_params:
             expr = self.full_mapping_sympy[p_name]
-            row_diffs = [diff(expr, r_sym) for r_sym in self.reg_syms]
-            rows.append(row_diffs)
-            
-        self.jacobian_matrix = Matrix(rows)
-        self.jacobian_lam = lambdify(self.reg_syms, self.jacobian_matrix, modules="numpy")
+            rows.append([diff(expr, r_sym) for r_sym in self.reg_syms])
 
-    def get_physical_params(self, regression_params_dict):
+        self.jacobian_matrix = Matrix(rows)
+        self.jacobian_lam = lambdify(
+            self.reg_syms, self.jacobian_matrix, modules="numpy"
+        )
+
+    # ------------------------------------------------------------------
+    # Public interface
+    # ------------------------------------------------------------------
+
+    def get_physical_params(self, regression_params_dict: dict) -> dict:
         """
-        Convert regression parameters (dict) to physical parameters (dict).
+        Convert a regression-parameter value dict to a physical-parameter dict.
+
+        Parameters
+        ----------
+        regression_params_dict : dict
+            Mapping of regression parameter name → current numerical value.
+            May contain extra keys (e.g. species concentrations); only the
+            regression parameters are extracted.
+
+        Returns
+        -------
+        dict
+            Physical parameter names mapped to their computed values.
+
+        Raises
+        ------
+        KeyError
+            If a required regression parameter is absent from
+            ``regression_params_dict``.
+        ValueError
+            If the result for any physical parameter is still symbolic
+            (indicates an incomplete mapping — likely a bug in rule parsing).
+        RuntimeError
+            If numerical evaluation fails for any other reason.
         """
-        # Ensure we have all args
         try:
             args = [regression_params_dict[p] for p in self.regression_params]
         except KeyError as e:
-            raise KeyError(f"Missing regression parameter: {e}. Available: {list(regression_params_dict.keys())}")
+            raise KeyError(
+                f"Missing regression parameter: {e}. "
+                f"Available: {list(regression_params_dict.keys())}"
+            )
 
         phys_vals = {}
         for p_name in self.physical_params:
             try:
-                # Evaluate
                 func = self.forward_funcs[p_name]
                 val = func(*args)
-                
-                # Check if result is symbolic (sympy expression) instead of float
-                # This happens if substitution wasn't complete or lambdify kept it symbolic
+
                 if hasattr(val, 'free_symbols') and val.free_symbols:
-                     # This should not happen if mapped correctly to regression params
-                     raise ValueError(f"Result for {p_name} is still symbolic: {val}")
-                     
+                    raise ValueError(
+                        f"Result for '{p_name}' is still symbolic: {val}. "
+                        "Check that all reparameterization rules are fully resolved."
+                    )
+
                 phys_vals[p_name] = float(val)
+
+            except (ValueError, KeyError):
+                raise
             except Exception as e:
-                # Fallback or error
-                print(f"Error evaluating {p_name}: {e}")
-                print(f"  Expression: {self.full_mapping_sympy[p_name]}")
-                print(f"  Args: {args}")
-                print(f"  Regression Params: {self.regression_params}")
-                
-                # Check what symbols are in the expression
-                free = self.full_mapping_sympy[p_name].free_symbols
-                print(f"  Free symbols in expr: {free}")
-                
-                phys_vals[p_name] = np.nan
-                raise e
+                warnings.warn(
+                    f"Unexpected error evaluating physical parameter '{p_name}': {e}. "
+                    f"Expression: {self.full_mapping_sympy[p_name]}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                raise RuntimeError(
+                    f"Failed to evaluate '{p_name}': {e}"
+                ) from e
+
         return phys_vals
 
-    def get_jacobian(self, regression_params_dict):
+    def get_jacobian(self, regression_params_dict: dict) -> np.ndarray:
         """
-        Returns matrix d[Physical]/d[Regression]
-        Rows: Physical Params (in order of self.physical_params)
-        Cols: Regression Params (in order of self.regression_params)
+        Compute ``d[physical] / d[regression]``.
+
+        Parameters
+        ----------
+        regression_params_dict : dict
+            Mapping of regression parameter name → current numerical value.
+            May contain extra keys; only the regression parameters are used.
+
+        Returns
+        -------
+        numpy.ndarray, shape (n_physical, n_regression)
+            Jacobian matrix where row ``i`` corresponds to
+            ``physical_params[i]`` and column ``j`` to
+            ``regression_params[j]``.
         """
         args = [regression_params_dict[p] for p in self.regression_params]
         return np.array(self.jacobian_lam(*args))

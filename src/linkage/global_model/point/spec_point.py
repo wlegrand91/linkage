@@ -1,54 +1,60 @@
-from .experimental_point import ExperimentalPoint
+from linkage.global_model.point.experimental_point import ExperimentalPoint
 
 import numpy as np
 
+
 class SpecPoint(ExperimentalPoint):
     """
-    Class holds experimental data for an individual spectroscopic 
-    experimental data point and how it links to the binding model. 
+    A single spectroscopic observation point.
+
+    The observable is modelled as the fraction of a macrospecies that
+    exists in a specified set of microspecies states::
+
+        signal = sum(micro_num) / macro_denom
+
+    where ``micro_num`` is the sum of concentrations of the microspecies
+    selected by ``obs_mask`` and ``macro_denom`` is the total concentration
+    of the reference macrospecies.
     """
 
     def __init__(self,
-                 idx,
-                 expt_idx,
-                 obs_key,
-                 micro_array,
-                 macro_array,
-                 del_macro_array,
-                 total_volume,
-                 injection_volume,
-                 obs_mask,
-                 denom):
+                 idx: int,
+                 expt_idx: int,
+                 obs_key: str,
+                 micro_array: np.ndarray,
+                 macro_array: np.ndarray,
+                 del_macro_array: np.ndarray,
+                 total_volume: float,
+                 injection_volume: float,
+                 obs_mask: np.ndarray,
+                 denom: int):
         """
-        Initialize a spectroscopic data point. 
-        
+        Initialise a spectroscopic observation point.
+
         Parameters
         ----------
         idx : int
-            index of point in the experimental array
+            Row index of this point within the experiment's data array.
         expt_idx : int
-            index of the experiment itself (allowing multiple experiments)
+            Index of the parent experiment in ``GlobalModel._expt_list``.
         obs_key : str
-            key pointing to observable from the experiment
-        micro_array : np.ndarray (float)
-            array holding concentrations of all microscopic species, calculated
-            elsewhere
-        macro_array : np.ndarray (float)
-            array holding concentrations of all macroscopic species, calculated
-            elsewhere
-        del_macro_array : np.ndarray (float)
-            array holding change in concentrations of all macroscopic species 
-            from the syringe to this condition
+            Column name of the observable in the experiment's DataFrame.
+        micro_array : numpy.ndarray, shape (n_points, n_micro)
+            Shared array of micro-species concentrations.
+        macro_array : numpy.ndarray, shape (n_points, n_macro)
+            Shared array of total macro-species concentrations.
+        del_macro_array : numpy.ndarray, shape (n_points, n_macro)
+            Shared array of (syringe − cell) concentration differences.
         total_volume : float
-            total volume of cell plus titrant at this point in the titration
+            Total cell volume (L) at this injection point.
         injection_volume : float
-            volume of last injection
-        obs_mask : np.ndarray (bool or int)
-            mask that grabs microscopic species from micro_array that correspond
-            to the numerator when calculating the observable
+            Volume (L) of the injection that produced this point.
+        obs_mask : numpy.ndarray of bool
+            Boolean mask of length ``n_micro`` selecting the micro-species
+            that contribute to the numerator of the observable.
         denom : int
-            index of the macro species that should be used as the denominator
-            for the observable calculation
+            Column index into ``macro_array`` for the macrospecies used as
+            the denominator (total concentration normaliser).
         """
 
         super().__init__(idx=idx,
@@ -59,57 +65,75 @@ class SpecPoint(ExperimentalPoint):
                          del_macro_array=del_macro_array,
                          total_volume=total_volume,
                          injection_volume=injection_volume)
-        
+
         self._obs_mask = obs_mask
         self._denom = denom
-        
-    def calc_value(self,*args,**kwargs):
-        """
-        Calculate the observable given the estimated concentrations of all 
-        species. *args and **kwargs are ignored.
-        """
 
-        num = np.sum(self._micro_array[self._idx,self._obs_mask])
-        den = self._macro_array[self._idx,self._denom]
-
-        if den == 0:
-            return np.nan
-        return num/den
-    
-    def get_d_y_d_concs(self):
+    def calc_value(self, *args, **kwargs) -> float:
         """
-        Calculate the derivative of the calculated value with respect to the
-        microscopic species concentrations: d(y_calc)/d(micro_concs).
+        Compute the spectroscopic signal at this injection point.
 
-        For y = sum(micro_num) / macro_den, the derivative with respect to
-        a specific micro_species[k] is 1/macro_den if k is in the numerator
-        mask, and 0 otherwise.
+        Returns ``sum(selected micro-species) / macro_denom``.  Returns
+        ``nan`` if the denominator concentration is zero.
+
+        Parameters
+        ----------
+        *args, **kwargs
+            Ignored.  Present for a consistent call signature with other
+            point types.
 
         Returns
         -------
-        numpy.ndarray
-            A 1D array of shape (num_micro_species,).
+        float
+            Predicted fractional signal, or ``nan`` if the denominator is
+            zero.
         """
+
+        num = np.sum(self._micro_array[self._idx, self._obs_mask])
+        den = self._macro_array[self._idx, self._denom]
+
+        if den == 0:
+            return np.nan
+        return num / den
+
+    def get_d_y_d_concs(self) -> np.ndarray:
+        """
+        Compute ``d(signal) / d(micro_species_concentrations)``.
+
+        For ``signal = sum(micro_num) / macro_denom``, the derivative with
+        respect to micro-species ``k`` is ``1 / macro_denom`` if ``k`` is
+        selected by ``obs_mask``, and ``0`` otherwise.
+
+        Returns
+        -------
+        numpy.ndarray, shape (n_micro,)
+            Per-micro-species derivatives.  Returns zeros if the denominator
+            is zero.
+        """
+
         den = self._macro_array[self._idx, self._denom]
         if den == 0:
             return np.zeros(self._micro_array.shape[1], dtype=float)
-            
-        # The derivative is 1/den for species in the numerator, 0 for all others.
-        deriv = self._obs_mask.astype(float) / den
-        return deriv
 
-    def get_d_y_d_other_params(self, parameters):
+        return self._obs_mask.astype(float) / den
+
+    def get_d_y_d_other_params(self, parameters: np.ndarray, **kwargs) -> dict:
         """
-        Calculate the derivative of the calculated value with respect to any
-        "other" parameters (i.e., not binding constants). For SpecPoint,
-        this is essentially zero as fudge factors are handled implicitly.
+        Derivatives with respect to non-concentration parameters.
+
+        Spectroscopic points have no direct dependence on enthalpy or
+        nuisance parameters — fudge-factor effects are captured implicitly
+        through the concentration chain rule in ``GlobalModel.jacobian_normalized``.
+
+        Parameters
+        ----------
+        parameters : numpy.ndarray
+            Full regression parameter vector (unused).
 
         Returns
         -------
         dict
-            An empty dictionary, as there are no direct parameter dependencies.
+            Empty dictionary.
         """
-        # Spectroscopic points have no direct dependence on enthalpies or fudges.
-        # The effect of fudge factors is implicitly captured by the chain rule
-        # in the main GlobalModel jacobian method, via the d(concs)/d(fudge) term.
+
         return {}
