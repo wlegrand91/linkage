@@ -1,0 +1,9 @@
+.. _dataprob: https://dataprob-wlegrand91.readthedocs.io/en/latest/
+.. _dataprob-ml: https://dataprob-wlegrand91.readthedocs.io/en/latest/fitters/ml.html
+.. _dataprob-bootstrap: https://dataprob-wlegrand91.readthedocs.io/en/latest/fitters/bootstrap.html
+.. _dataprob-emcee: https://dataprob-wlegrand91.readthedocs.io/en/latest/fitters/emcee.html
+.. _dataprob-pymc: https://dataprob-wlegrand91.readthedocs.io/en/latest/fitters/pymc.html
+.. _dataprob-hmc: https://dataprob-wlegrand91.readthedocs.io/en/latest/fitters/hmc.html
+.. _sympy: https://www.sympy.org
+.. _numpy: https://numpy.org
+.. _pandas: https://pandas.pydata.org
