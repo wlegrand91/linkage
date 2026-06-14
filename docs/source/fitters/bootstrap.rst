@@ -39,6 +39,8 @@ Usage
                        vector_first_arg=True,
                        fit_parameters=gm.param_names)
 
-    f.fit(y_obs=gm.y_obs, y_std=gm.y_std, num_bootstrap=500)
+    f.fit(y_obs=gm.y_obs,
+          y_std=gm.y_std,
+          num_bootstrap=500)
 
     print(f.fit_df)

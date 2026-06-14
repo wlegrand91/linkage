@@ -41,12 +41,13 @@ Burn-in is skipped and sampling continues from the saved state.
     f.fit(y_obs=gm.y_obs,
           y_std=gm.y_std,
           n_samples=2000,
-          burn_in=500,
           output_dir="hmc_results",
           resume_from="hmc_results")
 
 The fitter will load the saved samples, step size, and random state from the
 checkpoint and append new samples until the total requested number is reached.
+Burn-in is not repeated on resume, so ``burn_in`` should be omitted from the
+resumed call.
 
 .. note::
 

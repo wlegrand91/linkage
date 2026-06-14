@@ -20,6 +20,17 @@ governs it. Each line has the form ``reactants -> products; constant_name``.
 **species** defines conservation relationships. Each line equates a total
 concentration (e.g. ``AT``) to a sum of the species that make it up.
 
+.. important::
+
+    The symbolic parser assumes that the **last** mass balance equation in the
+    ``species`` block defines the free variable — i.e. the concentration that
+    will be treated as the unknown when solving the binding polynomial. In the
+    Ca/EDTA example below, ``CT`` is listed last, so the parser will express
+    everything as a polynomial in ``C`` and solve for it numerically. Placing a
+    different species last will change which variable is solved for, and writing
+    the ``species`` block in an order that conflicts with this expectation will
+    either break parsing or trigger expensive recursive solve attempts.
+
 **reparameterize** (optional) expresses the physical equilibrium constants in
 terms of a smaller set of regression parameters. This is useful when the model
 has symmetry constraints or when you want to fit microscopic constants rather
@@ -68,6 +79,97 @@ sites: two high-affinity and two low-affinity. The fitter sees ``k_high`` and
 ``k_low`` rather than the four raw constants, reducing the parameter space and
 eliminating redundancy.
 
+Where the coefficients come from
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The factors of 2 and 1/2 in the reparameterization rules are not arbitrary —
+they come from the combinatorics of identical, independent binding sites.
+
+When ``m`` equivalent sites all have the same microscopic affinity ``k``, the
+stepwise macroscopic binding constants are related to ``k`` by:
+
+.. math::
+
+    K_i = \frac{m - i + 1}{i} \cdot k
+
+The numerator counts how many empty sites are available at step ``i``; the
+denominator counts how many filled sites could release a ligand. For
+``m = 2`` identical sites this gives:
+
+.. math::
+
+    K_1 = \frac{2}{1} \cdot k = 2k \qquad K_2 = \frac{1}{2} \cdot k = \frac{k}{2}
+
+In the six-state model the four sites are split into two high-affinity and
+two low-affinity groups, each internally equivalent. The high-affinity sites
+fill during steps 1 and 2, the low-affinity sites during steps 3 and 4.
+Applying the formula within each group yields the four rules directly:
+
+.. code-block:: text
+
+    K1 = 2 * k_high    ← first of 2 high-affinity sites
+    K2 = k_high / 2    ← second of 2 high-affinity sites
+    K3 = 2 * k_low     ← first of 2 low-affinity sites
+    K4 = k_low / 2     ← second of 2 low-affinity sites
+
+The same logic applies to enthalpies, but because enthalpy is additive (not
+multiplicative) there are no statistical factors — each step in a group of
+identical sites has the same microscopic enthalpy, so the rules are simple
+equalities:
+
+.. code-block:: text
+
+    dH_1 = dH_high
+    dH_2 = dH_high
+    dH_3 = dH_low
+    dH_4 = dH_low
+
+For a model with a different site arrangement — for example three equivalent
+sites — the same formula applies with ``m = 3``, giving
+``K1 = 3k``, ``K2 = k``, ``K3 = k/3``.
+
+How regression parameters are determined
+-----------------------------------------
+
+When linkage parses a model spec it first determines the full set of
+**physical parameters** — the quantities that appear directly in the binding
+polynomial. These are derived automatically from the ``equilibria`` block:
+
+* Every equilibrium constant named in the equilibria block (e.g. ``K1``,
+  ``KE``) is a physical parameter.
+* Each equilibrium constant is paired with an enthalpy parameter whose name
+  is formed by replacing the leading ``K`` with ``dH_``: ``K1`` → ``dH_1``,
+  ``KE`` → ``dH_E``, ``KI`` → ``dH_I``, and so on.
+
+If there is no ``reparameterize`` block, every physical parameter is also a
+**regression parameter** — the set the fitter optimises directly.
+
+The ``reparameterize`` block modifies this set in two ways:
+
+1. **Removes dependent parameters.** Any physical parameter that appears on
+   the left-hand side of a rule is marked as dependent and is dropped from the
+   regression set. In the six-state example above, ``K1``, ``K2``, ``K3``,
+   ``K4``, ``dH_1``, ``dH_2``, ``dH_3``, and ``dH_4`` are all written on the
+   left-hand side, so none of them appear as regression parameters.
+
+2. **Adds new independent symbols.** Any symbol that appears on the
+   right-hand side of a rule and is not already a physical parameter becomes a
+   new regression parameter. In the six-state example, ``k_high``, ``k_low``,
+   ``dH_high``, and ``dH_low`` are all new symbols introduced on the
+   right-hand side, so they become the regression parameters the fitter sees.
+
+The final regression set is therefore:
+
+.. code-block:: text
+
+    regression_params = (physical_params − dependent_params) ∪ new_RHS_symbols
+
+Rules may be chained: a dependent parameter can appear in the expression for
+another dependent parameter, and linkage will substitute iteratively until
+every physical parameter is expressed purely in terms of regression parameters.
+Any physical parameter not mentioned on either side of a rule passes through
+unchanged — it stays in the regression set at its face value.
+
 The spec can be written as a string or saved to a ``.txt`` file and loaded by
 path.
 
@@ -84,8 +186,8 @@ one or more observables, which can be ITC heats or spectroscopic signals.
     expt = Experiment()
     expt.define_itc_observable(
         obs_file="my_itc_data.csv",
-        cell_contents={"protein": 25e-6},
-        syringe_contents={"ligand": 500e-6},
+        cell_contents={"ET": 25e-6},
+        syringe_contents={"CT": 500e-6},
     )
 
     expt_list = [expt]
@@ -149,7 +251,8 @@ Running the fit
 
 .. code-block:: python
 
-    f.fit(y_obs=gm.y_obs, y_std=gm.y_std)
+    f.fit(y_obs=gm.y_obs,
+          y_std=gm.y_std)
 
     print(f.fit_df)
     print(f.fit_quality)
