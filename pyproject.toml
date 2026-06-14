@@ -29,9 +29,11 @@ dependencies = [
 requires-python = ">=3.10"
 authors = [
   {name = "Mike Harms", email = "harms@uoregon.edu"},
+  {name = "Evan LeGrand", email = "w.evan.legrand@gmail.com"},
 ]
 maintainers = [
-  {name = "Mike Harms", email = "harms@uoregon.edu"}
+  {name = "Mike Harms", email = "harms@uoregon.edu"},
+  {name = "Evan LeGrand", email = "w.evan.legrand@gmail.com"},
 ]
 description = ""
 readme = "README.md"

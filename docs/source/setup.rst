@@ -26,7 +26,7 @@ concentration (e.g. ``AT``) to a sum of the species that make it up.
     ``species`` block defines the free variable — i.e. the concentration that
     will be treated as the unknown when solving the binding polynomial. In the
     Ca/EDTA example below, ``CT`` is listed last, so the parser will express
-    everything as a polynomial in ``C`` and solve for it numerically. Placing a
+    everything as a polynomial in ``C`` and solve for it symbolically. Placing a
     different species last will change which variable is solved for, and writing
     the ``species`` block in an order that conflicts with this expectation will
     either break parsing or trigger expensive recursive solve attempts.

@@ -2,10 +2,15 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
 # -- Project information -----------------------------------------------------
+import sys
+import os
+sys.path.insert(0, os.path.abspath('../../src'))
+from linkage.__version__ import __version__
+
 project = 'linkage'
-copyright = '2025, Michael J. Harms'
-author = 'Michael J. Harms'
-release = '0.1.0'
+copyright = '2026, Michael J. Harms and Evan LeGrand'
+author = 'Michael J. Harms, Evan LeGrand'
+release = __version__
 
 # -- General configuration ---------------------------------------------------
 extensions = [
